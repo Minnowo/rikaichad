@@ -84,6 +84,11 @@ cargo +nightly fuzz run -O import -- -max_total_time=3600 -max_len=65536
 
 Targets: `archive`, `rows`, `render`, `import`, `lookup` (fuzz/fuzz_targets).
 
+Releases: push a tag matching the version in Cargo.toml (e.g. `v0.1.0`).
+.github/workflows/release.yml tests and builds Linux, macOS and Windows
+archives and publishes them with checksums as a GitHub release; running
+the workflow by hand only builds.
+
 Read AGENTS.md before contributing.
 
 ## License

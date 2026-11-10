@@ -1,7 +1,9 @@
 # Installing jisho
 
-jisho is one binary with no runtime dependencies. There are no prebuilt
-binaries or packages yet; build it from source.
+jisho is one binary with no runtime dependencies. Releases have prebuilt
+archives for Linux (x86_64), macOS (Apple silicon and Intel) and Windows
+(x86_64), each with the licenses to ship alongside it; unpack one and put
+the binary on your PATH. Or build it from source as below.
 
 ## Requirements
 
