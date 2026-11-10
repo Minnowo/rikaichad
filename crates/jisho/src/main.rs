@@ -1,59 +1,97 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! jisho command-line entry point: parses global arguments and dispatches
-//! to a command. Output goes through explicit writes so a closed pipe is an
-//! error to report, not a panic.
+//! jisho command-line entry point: parses global options and dispatches
+//! to a command in `commands/`.
 
-use std::io::Write;
+mod commands;
+mod data_dir;
+mod output;
+
+use std::path::PathBuf;
 use std::process::ExitCode;
+
+use lexopt::prelude::*;
+
+use crate::commands::Context;
+use crate::output::{CliError, log, out};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "\
 jisho - Japanese dictionary engine for Yomitan dictionaries
 
-Usage: jisho [OPTIONS]
+Usage: jisho [OPTIONS] <COMMAND> [ARGS]
+
+Commands:
+  import <ZIP>...   Import Yomitan dictionary zips
+  list              List imported dictionaries
+  remove <ID>       Remove a dictionary
+  lookup <TEXT>     Look up a word
+  serve             Run the HTTP API
 
 Options:
-  -h, --help       Print this help
-  -V, --version    Print the version
+  --store PATH      Store file (default: $JISHO_STORE, else the platform
+                    data directory, e.g. ~/.local/share/jisho/jisho.sqlite)
+  -h, --help        Print help (also: jisho <COMMAND> --help)
+  -V, --version     Print the version
 ";
 
 fn main() -> ExitCode {
     match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(message) => {
-            let mut stderr = std::io::stderr().lock();
-            // Nothing sensible is left to do if stderr itself is gone.
-            let _ = writeln!(stderr, "jisho: {message}");
+        Ok(code) => code,
+        Err(err) => {
+            log("", &err.message);
             ExitCode::FAILURE
         }
     }
 }
 
-/// Parses the command line and runs the requested action.
-///
-/// Returns a user-facing error message on failure.
-fn run() -> Result<(), String> {
+fn run() -> Result<ExitCode, CliError> {
     let mut parser = lexopt::Parser::from_env();
-    let mut stdout = std::io::stdout().lock();
-    let arg = parser.next().map_err(|e| e.to_string())?;
-    match arg {
-        Some(lexopt::Arg::Short('V')) | Some(lexopt::Arg::Long("version")) => {
-            write_out(&mut stdout, &format!("jisho {VERSION}\n"))
+    let mut store_path: Option<PathBuf> = None;
+    loop {
+        let Some(arg) = parser.next()? else {
+            out(USAGE)?;
+            return Ok(ExitCode::SUCCESS);
+        };
+        match arg {
+            Short('V') | Long("version") => {
+                out(&format!("jisho {VERSION}\n"))?;
+                return Ok(ExitCode::SUCCESS);
+            }
+            Short('h') | Long("help") => {
+                out(USAGE)?;
+                return Ok(ExitCode::SUCCESS);
+            }
+            Long("store") => store_path = Some(PathBuf::from(parser.value()?)),
+            Value(command) => {
+                let command = command.string()?;
+                let store_path = match store_path {
+                    Some(path) => path,
+                    None => data_dir::default_store_path().ok_or_else(|| {
+                        CliError::new(format!(
+                            "cannot find a data directory; pass --store or set {}",
+                            data_dir::STORE_ENV
+                        ))
+                    })?,
+                };
+                let ctx = Context { store_path };
+                return match command.as_str() {
+                    "import" => commands::import::run(&mut parser, &ctx),
+                    "list" => commands::list::run(&mut parser, &ctx),
+                    "remove" => commands::remove::run(&mut parser, &ctx),
+                    "lookup" => commands::lookup::run(&mut parser, &ctx),
+                    "serve" => commands::serve::run(&mut parser, &ctx),
+                    other => Err(CliError::new(format!(
+                        "unknown command {other:?}\nRun 'jisho --help' for usage."
+                    ))),
+                };
+            }
+            _ => {
+                return Err(CliError::new(format!(
+                    "{}\nRun 'jisho --help' for usage.",
+                    arg.unexpected()
+                )));
+            }
         }
-        Some(lexopt::Arg::Short('h')) | Some(lexopt::Arg::Long("help")) | None => {
-            write_out(&mut stdout, USAGE)
-        }
-        Some(other) => Err(format!(
-            "{}\nRun 'jisho --help' for usage.",
-            other.unexpected()
-        )),
     }
-}
-
-/// Writes `text` to `out`, mapping I/O failures to a message.
-fn write_out(out: &mut impl Write, text: &str) -> Result<(), String> {
-    out.write_all(text.as_bytes())
-        .and_then(|()| out.flush())
-        .map_err(|e| format!("cannot write output: {e}"))
 }

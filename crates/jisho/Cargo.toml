@@ -8,7 +8,15 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+jisho-api = { path = "../jisho-api" }
+jisho-format = { path = "../jisho-format" }
+jisho-store = { path = "../jisho-store" }
 lexopt = "0.3.2"
+serde = "1"
+serde_json = "1"
+
+[dev-dependencies]
+jisho-testkit = { path = "../jisho-testkit" }
 
 [lints]
 workspace = true

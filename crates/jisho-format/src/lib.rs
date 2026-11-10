@@ -18,6 +18,7 @@ mod error;
 mod glossary;
 mod index;
 mod limits;
+mod render_text;
 mod rows;
 mod stream;
 
@@ -27,5 +28,6 @@ pub use error::FormatError;
 pub use glossary::normalize_glossary;
 pub use index::{FrequencyMode, Index, IndexTag};
 pub use limits::Limits;
+pub use render_text::glossary_item_text;
 pub use rows::{KanjiMetaRow, KanjiRow, TagRow, TermMetaRow, TermRow};
 pub use stream::stream_rows;
