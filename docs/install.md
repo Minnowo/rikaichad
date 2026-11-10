@@ -75,12 +75,19 @@ jisho serve                                # 127.0.0.1:47613, this machine only
 jisho serve --bind 0.0.0.0:47613 --read-only
 ```
 
+Open http://127.0.0.1:47613/ in a browser for the web UI (lookup, kanji,
+sentence parsing); it is built into the binary.
+
 There is no authentication. On the default loopback address only programs
-on this machine can connect; browsers' web pages can call it only from
-origins you allow with `--allow-origin`, and requests with a foreign
-`Host` header are refused (DNS rebinding). With `--bind` on a network
+on this machine can connect; other web pages in your browser can call it
+only from origins you allow with `--allow-origin` (the built-in web UI is
+always allowed), and requests with a foreign `Host` header are refused
+(DNS rebinding). With `--bind` on a network
 address, anyone who can reach it can use it: add `--read-only` so nobody
 can import, remove or change dictionaries (jisho warns when you do not).
+To open the web UI by a host name rather than an IP address (e.g.
+`http://jisho.lan:47613/`), add the name with `--allow-host`; behind a
+reverse proxy, the proxy must pass the original `Host` header.
 docs/api.md has the details and the limits.
 
 To keep it running on Linux, a systemd user service works, for example

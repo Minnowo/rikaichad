@@ -73,7 +73,9 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     let read_only = config.read_only;
     jisho_api::run(config, |addr| {
         let mode = if read_only { " (read-only)" } else { "" };
-        info(&format!("listening on http://{addr}{mode}"));
+        info(&format!(
+            "listening on http://{addr}{mode}; web UI at http://{addr}/"
+        ));
     })
     .map_err(|e| CliError::new(e.to_string()))?;
     Ok(ExitCode::SUCCESS)

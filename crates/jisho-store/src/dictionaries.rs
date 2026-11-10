@@ -66,6 +66,21 @@ impl Store {
             })
     }
 
+    /// The styles.css of the dictionary with `id`, `None` when it has
+    /// none. `StoreError::NotFound` when there is no such dictionary.
+    pub fn dictionary_styles(&self, id: i64) -> Result<Option<String>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT styles FROM dictionaries WHERE id = ?1")?;
+        let mut rows = stmt.query([id])?;
+        match rows.next()? {
+            Some(row) => Ok(row.get(0)?),
+            None => Err(StoreError::NotFound {
+                what: format!("with id {id}"),
+            }),
+        }
+    }
+
     /// Removes the dictionary with `id` and all its rows, in one
     /// transaction. Large dictionaries take a while (rows are deleted, then
     /// the freed pages stay in the file for reuse).

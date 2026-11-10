@@ -66,6 +66,28 @@ impl HostPolicy {
     }
 }
 
+impl HostPolicy {
+    /// Whether `host` (a Host header) names this server in a way DNS
+    /// rebinding cannot fake: a loopback name, an IP literal, or a name in
+    /// `allowed_hosts`. A wildcard bind without `allowed_hosts` accepts any
+    /// Host, so there a matching Origin alone proves nothing.
+    pub fn is_trusted_name(&self, host: &str) -> bool {
+        let name = strip_port(host).to_ascii_lowercase();
+        let extra = match self {
+            HostPolicy::Loopback { extra }
+            | HostPolicy::Specific { extra, .. }
+            | HostPolicy::Wildcard { extra } => extra,
+        };
+        let literal = name
+            .strip_prefix('[')
+            .and_then(|n| n.strip_suffix(']'))
+            .unwrap_or(&name);
+        LOOPBACK_NAMES.contains(&name.as_str())
+            || literal.parse::<std::net::IpAddr>().is_ok()
+            || extra.contains(&name)
+    }
+}
+
 /// Middleware: fails requests (including reading their body) that take
 /// longer than the configured time limit with `503 timeout`. Dictionary
 /// uploads and removals are exempt: they take as long as the dictionary
@@ -117,6 +139,11 @@ pub async fn guard(State(state): State<AppState>, request: Request, next: Next) 
             }
         },
     };
+    // The UI's own fetches: same origin as the (already checked) Host, if
+    // that Host cannot be a rebound DNS name.
+    if host.is_some_and(|h| state.host_policy.is_trusted_name(h) && is_same_origin(&origin, h)) {
+        return next.run(request).await;
+    }
     let allowed = state
         .config
         .allowed_origins
@@ -158,6 +185,15 @@ pub async fn guard(State(state): State<AppState>, request: Request, next: Next) 
             .insert(header::VARY, HeaderValue::from_static("Origin"));
     }
     response
+}
+
+/// Whether `origin` is `http://` or `https://` (behind a TLS proxy)
+/// followed by exactly `host`, the request's Host header.
+fn is_same_origin(origin: &str, host: &str) -> bool {
+    let rest = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"));
+    rest.is_some_and(|r| r.eq_ignore_ascii_case(host))
 }
 
 /// `example.com:8080` -> `example.com`, `[::1]:80` -> `[::1]`.

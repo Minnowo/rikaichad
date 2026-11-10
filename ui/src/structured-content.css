@@ -1,0 +1,70 @@
+/* Ported from Yomitan ext/css/structured-content.css at ee81f8dcf13e985bb4d7961009fb49a764b4d924.
+ * Copyright (C) 2023-2026  Yomitan Authors
+ * Copyright (C) 2021-2022  Yomichan Authors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * The rules for the elements jisho renders (tables, lists, details,
+ * links, the "[Image]" text that stands in for images), with Yomitan's
+ * color variables mapped to the ponkotsu theme. Layout modes, image
+ * loading and the compact glossary mode are left out.
+ */
+
+.gloss-image-link-text::before {
+    content: '[';
+}
+.gloss-image-link-text::after {
+    content: ']';
+}
+.gloss-image-link {
+    color: var(--color-c-on-surface-variant);
+    cursor: help;
+}
+
+.gloss-link-text {
+    vertical-align: baseline;
+}
+.gloss-link-external-icon::after {
+    content: '\2197';
+    margin-left: 0.15em;
+    font-size: 0.8em;
+}
+
+.gloss-sc-table-container {
+    display: block;
+    overflow-x: auto;
+}
+.gloss-sc-table {
+    table-layout: auto;
+    border-collapse: collapse;
+}
+.gloss-sc-thead,
+.gloss-sc-tfoot,
+.gloss-sc-th {
+    font-weight: bold;
+    background-color: var(--color-c-surface-container-2);
+}
+.gloss-sc-th,
+.gloss-sc-td {
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--color-c-outline-variant);
+    padding: 0.25em;
+    vertical-align: top;
+    text-align: left;
+}
+.gloss-sc-ol,
+.gloss-sc-ul {
+    padding-left: 1.4em;
+}
+.gloss-sc-ol {
+    list-style-type: decimal;
+}
+.gloss-sc-ul {
+    list-style-type: disc;
+}
+.gloss-sc-details {
+    padding-left: 1.4em;
+}
+.gloss-sc-summary {
+    list-style-position: outside;
+}

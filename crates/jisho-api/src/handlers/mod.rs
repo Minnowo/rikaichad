@@ -3,6 +3,7 @@
 
 pub mod dictionaries_list;
 pub mod dictionaries_manage;
+pub mod dictionary_styles;
 pub mod fallback;
 pub mod health;
 pub mod jobs;
@@ -11,3 +12,4 @@ pub mod settings;
 pub mod source;
 pub mod terms_lookup;
 pub mod text_parse;
+pub mod ui;

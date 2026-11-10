@@ -11,8 +11,8 @@ use axum::routing::{delete, get, post, put};
 use crate::config::ServeConfig;
 use crate::guard::{HostPolicy, guard, request_timeout};
 use crate::handlers::{
-    dictionaries_list, dictionaries_manage, fallback, health, jobs, kanji_lookup, settings, source,
-    terms_lookup, text_parse,
+    dictionaries_list, dictionaries_manage, dictionary_styles, fallback, health, jobs,
+    kanji_lookup, settings, source, terms_lookup, text_parse, ui,
 };
 use crate::listener::GuardedListener;
 use crate::state::AppState;
@@ -54,6 +54,8 @@ fn router_with_jobs(
         jobs,
     };
     Ok(Router::new()
+        .route("/", get(ui::index))
+        .route("/ui/{file}", get(ui::asset))
         .route("/v1/health", get(health::health))
         .route("/v1/terms/lookup", post(terms_lookup::terms_lookup))
         .route("/v1/kanji/lookup", post(kanji_lookup::kanji_lookup))
@@ -66,6 +68,10 @@ fn router_with_jobs(
         .route(
             "/v1/dictionaries/{id}",
             delete(dictionaries_manage::remove).patch(dictionaries_manage::patch),
+        )
+        .route(
+            "/v1/dictionaries/{id}/styles",
+            get(dictionary_styles::dictionary_styles),
         )
         .route(
             "/v1/settings",

@@ -544,6 +544,14 @@ reported additionally.
    coverage across all 17 tags, README, install docs, NOTICE. - done
    when: each fuzzer runs 1 hour without a finding; check script green on
    Linux/macOS/Windows CI.
+6. **Web UI** (added 2026-11-10, user request): word lookup, kanji and
+   sentence parse pages served by `jisho serve` from files embedded in
+   the binary; TypeScript and Tailwind with ponkotsu-css; glossaries
+   rendered from structured content with dictionaries' styles.css
+   scoped as in Yomitan. Plan and decisions: docs/plan/milestone-6.md. -
+   done when: server tests for the UI routes, headers, same-origin rule
+   and styles endpoint pass; ui/dist matches its sources in check.sh;
+   every page looked at in light and dark on the public corpus.
 
 ## 7. Adversarial review (2026-11-10)
 

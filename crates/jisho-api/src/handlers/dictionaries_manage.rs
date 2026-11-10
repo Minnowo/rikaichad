@@ -439,7 +439,7 @@ fn too_large(max: u64) -> ApiError {
 
 /// A dictionary id from the path, as the API's JSON error when it is not
 /// a number.
-fn dictionary_id(text: &str) -> Result<i64, ApiError> {
+pub(crate) fn dictionary_id(text: &str) -> Result<i64, ApiError> {
     text.parse()
         .map_err(|_| ApiError::bad_request(format!("dictionary id must be a number, got {text:?}")))
 }

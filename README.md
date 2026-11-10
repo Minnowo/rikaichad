@@ -27,6 +27,9 @@ translator against jisho on the same data (docs/plan/milestone-3.md).
 - **Parse** sentences into words with furigana.
 - **Serve** all of it over HTTP (docs/api.md), including dictionary
   upload, removal, order and settings, with a `--read-only` mode.
+- **Web UI** in the same binary: `jisho serve` and open
+  http://127.0.0.1:47613/ for word lookup, kanji and sentence parsing,
+  with definitions rendered as in Yomitan (dictionary styles included).
 
 Measured on 99 dictionaries (9 million entries): a full grouped lookup of
 a 16-character scan takes 9 ms at the median, 3.6 GB of store
@@ -56,7 +59,7 @@ jisho dictionary 3 --disable     # stop using dictionary 3
 jisho settings --sort-frequency JPDB --sort-frequency-order ascending
 jisho remove JMdict
 
-jisho serve                      # HTTP API on 127.0.0.1:47613
+jisho serve                      # API and web UI on http://127.0.0.1:47613/
 ```
 
 `jisho --help` and `jisho COMMAND --help` list everything.
@@ -81,6 +84,15 @@ again (keep your zips). The HTTP API may change until 1.0.
 ```sh
 scripts/check.sh    # format, lint, tests, ASCII, license and dependency checks
 jisho bench         # lookup latency on your store (bench/sentences.txt)
+```
+
+The web UI's sources are in ui/src (TypeScript, Tailwind with
+ponkotsu-css). The built files in ui/dist are committed and embedded in
+the binary, so building jisho needs no Node.js; after changing the UI,
+rebuild them (Node.js 22 or newer):
+
+```sh
+cd ui && npm ci && npm run build
 ```
 
 Fuzzing needs a nightly toolchain and cargo-fuzz (`rustup toolchain

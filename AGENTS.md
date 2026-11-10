@@ -236,6 +236,9 @@ crates/
   jisho-lookup/   Ported Yomitan translator: scan, deinflect, rank, group
   jisho-api/      HTTP server (axum), one handler per file
   jisho/          Binary: one CLI command per file
+ui/src/                   web UI sources (TypeScript, Tailwind + ponkotsu-css)
+ui/dist/                  built UI, committed, embedded by jisho-api's build.rs;
+                          rebuild with `npm run build` in ui/ (check.sh checks)
 docs/brief.md             plan and decisions (source of truth)
 docs/dictionary-survey.md measured facts about real dictionaries
 docs/reference/           downloaded specs (Yomitan schemas, API docs, licenses)

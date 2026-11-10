@@ -28,6 +28,8 @@ pub use entry::{
     TermFrequency, TermPronunciation,
 };
 pub use find_terms::{find_terms, load_glossaries, load_raw_glossaries};
+/// Furigana of a headword (Yomitan's distributeFurigana), for clients.
+pub use jisho_ja::{FuriganaSegment, distribute_furigana};
 pub use kanji::find_kanji;
 pub use options::{DictionaryOptions, EnabledDictionaries, FindTermsOptions, ResultMode};
 pub use parse::{ParsedHeadword, ParsedToken, parse_text};

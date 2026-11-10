@@ -8,11 +8,13 @@ changes need a new version prefix (`/v2`).
 
 ## Conventions
 
-- Every path starts with `/v1`.
+- Every API path starts with `/v1` (the web UI is served at `/` and
+  `/ui/`).
 - Requests with a body use `POST`/`PUT` and `Content-Type:
   application/json` (UTF-8), except dictionary upload, which uses
   `application/zip`. Any other content type gets `415`.
-- Responses are JSON (`application/json; charset=utf-8`).
+- Responses are JSON (`application/json; charset=utf-8`), except
+  dictionary styles (CSS) and the web UI's files.
 - Field names are `snake_case`. Unknown request fields are rejected
   (`400`), so typos do not silently change behaviour.
 - Text positions and lengths are given in two units, because clients
@@ -61,8 +63,14 @@ Every error response has this body:
 ### Browser access
 
 - `Origin`: requests without an `Origin` header (curl, scripts, apps) are
-  allowed. Requests with one are allowed only if the origin is in the
-  `allowed_origins` config list; allowed origins get CORS headers.
+  allowed. Requests with one are allowed if the origin is the server's
+  own (`http://` or `https://` followed by exactly the request's `Host`
+  header, which is checked first) and that Host is a loopback name, an IP
+  literal or listed in `allowed_hosts`: the web UI's requests. (A DNS name
+  must be listed because on a wildcard bind any Host passes, which DNS
+  rebinding would exploit.) A reverse proxy must keep the original `Host`.
+  Other origins must be in the `allowed_origins` config list; they get
+  CORS headers.
 - `Host`: when bound to a loopback address, `Host` must be `localhost`,
   `127.0.0.1` or `[::1]` (with or without the port). When bound to a
   specific non-loopback address, `Host` must be that address or a name in
@@ -71,22 +79,24 @@ Every error response has this body:
 
 ## Endpoints
 
-| Method | Path                         | Milestone | Mutates |
-|--------|------------------------------|-----------|---------|
-| GET    | `/v1/health`                 | 1         | no      |
-| POST   | `/v1/terms/lookup`           | 1 (exact), 2 (scan), 3 (grouping, metadata) | no |
-| GET    | `/v1/dictionaries`           | 1         | no      |
-| POST   | `/v1/kanji/lookup`           | 3         | no      |
-| POST   | `/v1/text/parse`             | 4         | no      |
-| POST   | `/v1/dictionaries`           | 4         | yes     |
-| DELETE | `/v1/dictionaries/{id}`      | 4         | yes     |
-| PATCH  | `/v1/dictionaries/{id}`      | 4         | yes     |
-| PUT    | `/v1/dictionaries/order`     | 4         | yes     |
-| GET    | `/v1/settings`               | 4         | no      |
-| PATCH  | `/v1/settings`               | 4         | yes     |
-| GET    | `/v1/jobs/{id}`              | 4         | no      |
-| DELETE | `/v1/jobs/{id}`              | 4         | yes     |
-| GET    | `/v1/source`                 | 4         | no      |
+| Method | Path                           | Milestone                                   | Mutates |
+|--------|--------------------------------|---------------------------------------------|---------|
+| GET    | `/v1/health`                   | 1                                           | no      |
+| POST   | `/v1/terms/lookup`             | 1 (exact), 2 (scan), 3 (grouping, metadata) | no      |
+| GET    | `/v1/dictionaries`             | 1                                           | no      |
+| POST   | `/v1/kanji/lookup`             | 3                                           | no      |
+| POST   | `/v1/text/parse`               | 4                                           | no      |
+| POST   | `/v1/dictionaries`             | 4                                           | yes     |
+| DELETE | `/v1/dictionaries/{id}`        | 4                                           | yes     |
+| PATCH  | `/v1/dictionaries/{id}`        | 4                                           | yes     |
+| PUT    | `/v1/dictionaries/order`       | 4                                           | yes     |
+| GET    | `/v1/settings`                 | 4                                           | no      |
+| PATCH  | `/v1/settings`                 | 4                                           | yes     |
+| GET    | `/v1/jobs/{id}`                | 4                                           | no      |
+| DELETE | `/v1/jobs/{id}`                | 4                                           | yes     |
+| GET    | `/v1/source`                   | 4                                           | no      |
+| GET    | `/v1/dictionaries/{id}/styles` | 6                                           | no      |
+| GET    | `/`, `/ui/{file}`              | 6 (web UI)                                  | no      |
 
 With `--read-only`, every "Mutates: yes" endpoint returns `403 read_only`.
 
@@ -130,6 +140,7 @@ Response:
         {
           "term": "...",
           "reading": "...",
+          "furigana": [{"text": "...", "reading": "..."}],
           "sources": [
             {
               "original_text": "...",
@@ -207,6 +218,9 @@ Response:
   (exactly one of each in `split` and `simple` mode). A definition's
   `headword_indices` say which headwords it belongs to; frequencies and
   pronunciations name theirs with `headword_index`.
+- `furigana` splits the headword's term into pieces with their readings
+  (Yomitan's distributeFurigana); an empty `reading` means the piece is
+  read as written.
 - `sources[].original_text` is the input prefix that matched;
   `transformed_text` is it after text preprocessing; `deinflected_text` is
   what was looked up. `match_source` says whether the term or the reading
@@ -319,6 +333,15 @@ dictionary`, `jisho order`, `jisho settings`), the API from milestone 4.
 numbers, as Yomitan's settings page does; removing that dictionary clears
 it (Yomitan keeps the stale name), so the next sequenced import takes its
 place.
+
+### GET /v1/dictionaries/{id}/styles
+
+The dictionary's `styles.css` as imported, `text/css; charset=utf-8`;
+`404 not_found` when the dictionary has none (`has_styles: false`) or
+does not exist. Yomitan applies it to the dictionary's definitions only,
+nested in `[data-dictionary="title"] { ... }`; the web UI does the same
+with `[data-dictionary-id="id"]`. The CSS is the dictionary author's:
+clients should scope it and not let it load resources.
 
 ### POST /v1/text/parse
 
@@ -454,3 +477,14 @@ outside a checkout unless `JISHO_GIT_COMMIT` is set at build time);
 `dirty` says whether the build had uncommitted changes. `repository` is
 `--source-url`, or `JISHO_SOURCE_URL` at build time, or null. Anyone who
 runs a modified jisho for others must publish their source and set it.
+
+### GET /, GET /ui/{file}
+
+The web UI (docs/plan/milestone-6.md): `/` is its page, `/ui/{file}` its
+scripts and stylesheet, built into the binary from ui/dist. Responses
+carry `Content-Security-Policy: default-src 'none'; script-src 'self';
+style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none';
+form-action 'none'; frame-ancestors 'none'`, `X-Content-Type-Options:
+nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-cache`.
+Unknown files are `404 not_found`. Served in `--read-only` mode too (the
+UI only reads).

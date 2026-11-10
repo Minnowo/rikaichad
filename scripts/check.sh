@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Runs every project check: format, lint, tests (must actually run), ASCII
 # rule, license headers, dependency licenses, and no tracked dictionaries.
-# Exits non-zero on the first failure. Requires cargo, git, awk and python3.
+# Exits non-zero on the first failure. Requires cargo, git, awk and python3;
+# npm for the web UI check (skipped with a notice without it).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 # Paths allowed to contain non-ASCII text (data that is non-ASCII by nature).
 # Inside .rs files, string and char literals may always hold non-ASCII.
-ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|crates/jisho-(ja|lookup)/data/.*[.]json$|bench/sentences.txt$|LICENSE$)'
+# ui/dist is build output (the CSS minifier turns escapes into characters);
+# its ASCII sources are checked, and the web UI step checks dist matches.
+ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|crates/jisho-(ja|lookup)/data/.*[.]json$|bench/sentences.txt$|LICENSE$|ui/dist/)'
 
 # Licenses allowed for dependencies (SPDX ids). See scripts/license_check.py
 # for how OR/AND/WITH expressions are evaluated.
@@ -24,6 +27,26 @@ step "format"
 cargo fmt --all --check
 # The fuzz crate is outside the workspace (nightly-only build).
 cargo fmt --manifest-path fuzz/Cargo.toml --check
+
+step "web ui"
+# ui/dist is committed and embedded in the binary: it must be what the
+# sources build to.
+if command -v npm > /dev/null; then
+    if [ ! -d ui/node_modules ]; then
+        npm ci --prefix ui --no-fund --no-audit
+    fi
+    ui_out=$(mktemp -d)
+    npm run --silent --prefix ui build -- --out "$ui_out"
+    if ! diff -r "$ui_out" ui/dist; then
+        rm -rf "$ui_out"
+        echo "check: ui/dist is stale; run npm run build in ui/ and commit it" >&2
+        exit 1
+    fi
+    rm -rf "$ui_out"
+    echo ok
+else
+    echo "skipped: npm not installed (ui/dist not checked against ui/src)"
+fi
 
 step "clippy"
 cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -55,10 +78,10 @@ echo ok
 step "license headers"
 bad=0
 while IFS= read -r f; do
-    case "$f" in crates/*.rs) ;; *) continue ;; esac
+    case "$f" in crates/*.rs | ui/src/*.ts | ui/src/*.css) ;; *) continue ;; esac
     [ -f "$f" ] || continue
-    if grep -q '^// Ported from Yomitan ' "$f"; then
-        if ! grep -q '^// SPDX-License-Identifier: GPL-3.0-or-later$' "$f"; then
+    if grep -qE '^(//|/\*) Ported from Yomitan ' "$f"; then
+        if ! grep -qE '^(//| \*) SPDX-License-Identifier: GPL-3.0-or-later$' "$f"; then
             echo "$f: ported file without GPL-3.0-or-later SPDX line" >&2; bad=1
         fi
         if ! grep -q 'Copyright (C)' "$f"; then
@@ -67,7 +90,7 @@ while IFS= read -r f; do
         if ! grep -qF "$f" NOTICE; then
             echo "$f: ported file not listed in NOTICE" >&2; bad=1
         fi
-    elif ! head -n 1 "$f" | grep -q '^// SPDX-License-Identifier: AGPL-3.0-or-later$'; then
+    elif ! head -n 1 "$f" | grep -qE '^(//|/\*) SPDX-License-Identifier: AGPL-3.0-or-later$'; then
         echo "$f: first line must be the AGPL-3.0-or-later SPDX line" >&2; bad=1
     fi
 done < <(project_files)

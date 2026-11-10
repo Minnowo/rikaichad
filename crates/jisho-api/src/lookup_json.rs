@@ -5,7 +5,7 @@
 
 use jisho_lookup::{
     EnabledDictionaries, FindTermsOptions, KanjiEntry, PronunciationKind, ResultMode, Tag,
-    TermEntry, find_kanji, find_terms, load_raw_glossaries, parse_text,
+    TermEntry, distribute_furigana, find_kanji, find_terms, load_raw_glossaries, parse_text,
 };
 use jisho_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
@@ -98,6 +98,9 @@ pub struct TermEntryJson {
 pub struct HeadwordJson {
     pub term: String,
     pub reading: String,
+    /// The term in pieces with their readings, for ruby (empty reading:
+    /// read as written).
+    pub furigana: Vec<FuriganaJson>,
     pub sources: Vec<SourceJson>,
     pub tags: Vec<TagJson>,
     /// Part-of-speech ids from the dictionary (e.g. "v1").
@@ -260,6 +263,16 @@ pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupRespon
     })
 }
 
+fn furigana_json(term: &str, reading: &str) -> Vec<FuriganaJson> {
+    distribute_furigana(term, reading)
+        .into_iter()
+        .map(|s| FuriganaJson {
+            text: s.text,
+            reading: s.reading,
+        })
+        .collect()
+}
+
 fn tags_json(tags: Vec<Tag>) -> Vec<TagJson> {
     tags.into_iter()
         .map(|t| TagJson {
@@ -300,6 +313,7 @@ fn entry_json(entry: TermEntry) -> Result<TermEntryJson, StoreError> {
             .headwords
             .into_iter()
             .map(|h| HeadwordJson {
+                furigana: furigana_json(&h.term, &h.reading),
                 term: h.term,
                 reading: h.reading,
                 sources: h
@@ -563,7 +577,7 @@ pub struct ParseTokenJson {
     pub headwords: Vec<Vec<ParsedHeadwordJson>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FuriganaJson {
     pub text: String,
     pub reading: String,
