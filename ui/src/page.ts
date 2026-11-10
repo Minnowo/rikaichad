@@ -33,13 +33,21 @@ export function replaceParams(page: PageName, params: Record<string, string>): v
     history.replaceState(null, '', href(page, params));
 }
 
+/** A task run later (`schedule`) or at once (`now`); see [`debounced`]. */
+export interface Debounced {
+    schedule(): void;
+    now(): void;
+    /** Drops a scheduled run; a running one finishes. */
+    cancelPending(): void;
+}
+
 /**
- * Runs `task` `delay` ms after the last call, aborting the previous run's
- * signal, so only the latest input's request finishes. When `page` is
- * aborted (the user left the page), a pending run is dropped and a running
- * one aborted.
+ * Runs `task` `delay` ms after the last `schedule()`, or at once on
+ * `now()`; either aborts the previous run's signal, so only the latest
+ * request finishes. When `page` is aborted (the user left the page), a
+ * pending run is dropped and a running one aborted.
  */
-export function debounced(delay: number, page: AbortSignal, task: (signal: AbortSignal) => Promise<void>): () => void {
+export function debounced(delay: number, page: AbortSignal, task: (signal: AbortSignal) => Promise<void>): Debounced {
     let timer: number | undefined;
     let controller: AbortController | undefined;
     const cancel = (): void => {
@@ -47,19 +55,25 @@ export function debounced(delay: number, page: AbortSignal, task: (signal: Abort
         controller?.abort();
     };
     page.addEventListener('abort', cancel);
-    return () => {
+    const start = (wait: number): void => {
         cancel();
         if (page.aborted) {
             return;
         }
         const current = new AbortController();
         controller = current;
-        timer = window.setTimeout(() => {
+        const run = (): void => {
             task(current.signal).catch((error: unknown) => {
                 if (!(error instanceof DOMException && error.name === 'AbortError')) {
                     console.error(error);
                 }
             });
-        }, delay);
+        };
+        if (wait === 0) {
+            run();
+        } else {
+            timer = window.setTimeout(run, wait);
+        }
     };
+    return {schedule: () => start(delay), now: () => start(0), cancelPending: () => window.clearTimeout(timer)};
 }

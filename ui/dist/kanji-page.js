@@ -4,21 +4,39 @@
 import { ApiError, lookupKanji } from './api.js';
 import { el, message } from './dom.js';
 import { debounced, replaceParams } from './page.js';
+import { searchForm } from './search-form.js';
+import { autoSearch } from './auto-search.js';
+import { loadPageState, savePageState } from './storage.js';
 /**
- * Builds the kanji page for `params` (q) into `root`; `page` is aborted
- * when the user navigates away.
+ * Builds the kanji page into `root`; `page` is aborted when the user
+ * navigates away. The page comes back as it was left in this tab, unless
+ * the URL asks for other results (a link).
  */
 export function renderKanjiPage(root, params, page) {
+    const state = loadPageState('kanji');
+    const linked = params.get('q');
+    if (linked !== null && linked !== state.shown) {
+        state.text = linked;
+        state.shown = linked;
+    }
     const input = el('input', 'flex-1');
     input.type = 'search';
     input.placeholder = 'One or more kanji';
     input.setAttribute('aria-label', 'Kanji to look up');
     input.lang = 'ja';
-    input.value = params.get('q') ?? '';
+    input.value = state.text;
     const results = el('div', 'flex flex-col gap-2');
     results.lang = 'ja';
+    const save = () => {
+        state.text = input.value;
+        savePageState('kanji', state);
+    };
+    // The query to run: the box text, or the restored shown query.
+    let query = '';
     const search = debounced(150, page, async (signal) => {
-        const text = input.value.trim();
+        const text = query;
+        state.shown = text;
+        save();
         replaceParams('kanji', text === '' ? {} : { q: text });
         if (text === '') {
             results.replaceChildren();
@@ -40,11 +58,32 @@ export function renderKanjiPage(root, params, page) {
             throw error;
         }
     });
-    input.addEventListener('input', search);
-    root.replaceChildren(el('section', 'flex flex-col gap-4', el('div', 'flex items-center gap-2', input), results));
+    const fromBox = (run) => {
+        query = input.value.trim();
+        run();
+    };
+    const form = searchForm(input, [], page, {
+        onType: () => {
+            save();
+            if (autoSearch()) {
+                fromBox(search.schedule);
+            }
+        },
+        searchNow: () => fromBox(search.now),
+        onAutoSearch: (on) => {
+            if (!on) {
+                search.cancelPending();
+            }
+            else if (input.value.trim() !== state.shown) {
+                fromBox(search.now);
+            }
+        },
+    });
+    root.replaceChildren(el('section', 'flex flex-col gap-4', form, results));
     input.focus();
-    if (input.value !== '') {
-        search();
+    if (state.shown !== '') {
+        query = state.shown;
+        search.now();
     }
 }
 function renderKanji(entry) {

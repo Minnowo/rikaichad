@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Entry point: theme, navigation, routing between the pages, dictionary
-// styles and the source link (AGPL-3.0 section 13).
+// Entry point: theme, navigation, the auto-search setting, routing between
+// the pages, dictionary styles and the source link (AGPL-3.0 section 13).
 import { getSource, listDictionaries } from './api.js';
 import { loadDictionaryStyles } from './dictionary-styles.js';
 import { el } from './dom.js';
@@ -8,6 +8,7 @@ import { renderKanjiPage } from './kanji-page.js';
 import { renderLookupPage } from './lookup-page.js';
 import { currentRoute, href } from './page.js';
 import { renderParsePage } from './parse-page.js';
+import { AUTO_SEARCH_EVENT, autoSearch, setAutoSearch } from './auto-search.js';
 const PAGES = [
     { name: 'lookup', label: 'Lookup' },
     { name: 'kanji', label: 'Kanji' },
@@ -24,6 +25,7 @@ for (const page of PAGES) {
     link.dataset['page'] = page.name;
     nav.appendChild(link);
 }
+addAutoSearchToggle();
 window.addEventListener('hashchange', route);
 route();
 void showSource();
@@ -49,6 +51,18 @@ function route() {
             renderParsePage(main, params, signal);
             break;
     }
+}
+/** The "Search as you type" checkbox in the header (saved across visits). */
+function addAutoSearchToggle() {
+    const box = el('input', '');
+    box.type = 'checkbox';
+    box.checked = autoSearch();
+    box.addEventListener('change', () => setAutoSearch(box.checked));
+    // Another tab changed it.
+    window.addEventListener(AUTO_SEARCH_EVENT, () => {
+        box.checked = autoSearch();
+    });
+    requireElement('header').appendChild(el('label', 'ml-auto flex items-center gap-2', box, 'Search as you type'));
 }
 /** ponkotsu's theme is dark unless the root has data-theme="light". */
 function followSystemTheme() {

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Word lookup: Yomitan-style scan of the start of the typed text, results
-// updating as you type.
+// updating as you type (unless auto-search is off).
 
 import {ApiError, type ResultMode, lookupTerms} from './api.js';
 import {el, message} from './dom.js';
 import {debounced, href, replaceParams} from './page.js';
+import {searchForm} from './search-form.js';
+import {autoSearch} from './auto-search.js';
+import {loadPageState, savePageState} from './storage.js';
 import {renderTermEntries} from './term-view.js';
 
 const RESULT_MODES: {value: ResultMode; label: string}[] = [
@@ -15,16 +18,27 @@ const RESULT_MODES: {value: ResultMode; label: string}[] = [
 ];
 
 /**
- * Builds the lookup page for `params` (q, mode) into `root`; `page` is
- * aborted when the user navigates away.
+ * Builds the lookup page into `root`; `page` is aborted when the user
+ * navigates away. The page comes back as it was left in this tab (box
+ * text, shown results, mode), unless the URL asks for other results (a
+ * link); the page's own URL after a search (reload, Back) keeps the state.
  */
 export function renderLookupPage(root: HTMLElement, params: URLSearchParams, page: AbortSignal): void {
+    const state = loadPageState('lookup');
+    const linked = params.get('q');
+    const linkedMode = params.get('mode');
+    if (linked !== null && (linked !== state.shown || (linkedMode !== null && linkedMode !== state.mode))) {
+        state.text = linked;
+        state.shown = linked;
+        state.mode = linkedMode ?? state.mode;
+    }
+
     const input = el('input', 'flex-1');
     input.type = 'search';
     input.placeholder = 'Japanese or romaji, e.g. taberarenakatta';
     input.setAttribute('aria-label', 'Text to look up');
     input.lang = 'ja';
-    input.value = params.get('q') ?? '';
+    input.value = state.text;
 
     const mode = el('select', '');
     mode.setAttribute('aria-label', 'Result grouping');
@@ -33,15 +47,24 @@ export function renderLookupPage(root: HTMLElement, params: URLSearchParams, pag
         node.value = option.value;
         mode.appendChild(node);
     }
-    const requested = params.get('mode');
-    mode.value = RESULT_MODES.some((m) => m.value === requested) ? (requested as ResultMode) : 'group';
+    mode.value = RESULT_MODES.some((m) => m.value === state.mode) ? state.mode : 'group';
 
     const status = el('small', '');
     const results = el('div', 'flex flex-col gap-2');
+    const save = (): void => {
+        state.text = input.value;
+        savePageState('lookup', state);
+    };
 
+    // The query to run: the box text, or the restored shown query.
+    let query = '';
     const search = debounced(150, page, async (signal) => {
-        const text = input.value.trim();
+        const text = query;
         const resultMode = mode.value as ResultMode;
+        // The saved mode is always the mode of the shown results.
+        state.shown = text;
+        state.mode = resultMode;
+        save();
         replaceParams('lookup', text === '' ? {} : {q: text, mode: resultMode});
         if (text === '') {
             status.textContent = '';
@@ -59,9 +82,10 @@ export function renderLookupPage(root: HTMLElement, params: URLSearchParams, pag
             status.textContent = `${count} for \u300c${response.matched.text}\u300d`;
             results.replaceChildren(
                 renderTermEntries(response.entries, {
-                    search: (query) => {
-                        input.value = query;
-                        search();
+                    search: (linkedQuery) => {
+                        input.value = linkedQuery;
+                        query = linkedQuery;
+                        search.now();
                         window.scrollTo({top: 0});
                     },
                     kanjiHref: (character) => href('kanji', {q: character}),
@@ -76,14 +100,37 @@ export function renderLookupPage(root: HTMLElement, params: URLSearchParams, pag
             throw error;
         }
     });
-    input.addEventListener('input', search);
-    mode.addEventListener('change', search);
+    const fromBox = (run: () => void): void => {
+        query = input.value.trim();
+        run();
+    };
+    const form = searchForm(input, [mode], page, {
+        onType: () => {
+            save();
+            if (autoSearch()) {
+                fromBox(search.schedule);
+            }
+        },
+        searchNow: () => fromBox(search.now),
+        onAutoSearch: (on) => {
+            if (!on) {
+                search.cancelPending();
+            } else if (input.value.trim() !== state.shown) {
+                fromBox(search.now);
+            }
+        },
+    });
+    // Choosing a mode is not typing: it always regroups the shown results
+    // (or searches the box if nothing is shown yet).
+    mode.addEventListener('change', () => {
+        query = state.shown !== '' ? state.shown : input.value.trim();
+        search.now();
+    });
 
-    root.replaceChildren(
-        el('section', 'flex flex-col gap-4', el('div', 'flex flex-wrap items-center gap-2', input, mode), status, results),
-    );
+    root.replaceChildren(el('section', 'flex flex-col gap-4', form, status, results));
     input.focus();
-    if (input.value !== '') {
-        search();
+    if (state.shown !== '') {
+        query = state.shown;
+        search.now();
     }
 }

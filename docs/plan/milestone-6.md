@@ -104,3 +104,34 @@ JMdict + KANJIDIC and on the user's 99 dictionaries: no console errors or
 CSP violations; dictionary styles adopted (5 stylesheets on the user's
 collection); a hostile stylesheet (`}` outside a rule) stays inside its
 scope.
+
+## Saved state and auto-search (user request, 2026-11-10)
+
+- Each page keeps its state for the browser tab in sessionStorage: the
+  box text (also when not searched yet), the query whose results are
+  shown, the lookup result mode and the selected parsed word. Coming back
+  to a page restores the box and re-runs the shown query, which redraws
+  the same results (results themselves are not stored: they can be
+  megabytes). A `q` in the URL (links, bookmarks) wins over saved state.
+- "Search as you type" in the header (localStorage, default on) applies
+  to lookup and kanji; when off, a Search button appears and Enter (always
+  available) searches. Parse always has its button.
+- After a search the page's own URL carries `q`; a `q` that matches the
+  saved shown query (reload, Back/Forward) keeps the saved state, any
+  other `q` (a link) replaces it.
+- Changing the lookup result mode always regroups the shown results (it
+  is not typing), so the saved mode is always that of the shown results.
+- Turning auto-search off drops a pending search; turning it on searches
+  the box if it differs from the shown results. Other tabs follow the
+  setting (storage event).
+- Storage that is unavailable or full is ignored: nothing is remembered,
+  everything else works.
+- Review found: `q` from the page's own URL wiped the state on reload and
+  Back (parse selection, unsearched drafts); a re-parse cleared the saved
+  selection before its response; a mode change with auto-search off left
+  saved mode and results apart; the toggle ignored pending searches;
+  storage.ts held two concepts (auto-search.ts split out). All fixed.
+- Checked in headless Chromium: 27 steps (switching between all three
+  pages and back, drafts, mode, selection, reload, Back, links, the
+  setting off and on with a pending search, a second tab). Not automated:
+  the UI has no JS test runner (Playwright would be a new dependency).
