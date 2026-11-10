@@ -3,3 +3,4 @@
 /dictionaries/
 # Read-only upstream clones used as porting references.
 /reference-src/
+__pycache__/

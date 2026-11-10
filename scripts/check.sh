@@ -7,11 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Paths allowed to contain non-ASCII text (data that is non-ASCII by nature).
+# Inside .rs files, string and char literals may always hold non-ASCII.
 ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|LICENSE$)'
 
-# Licenses allowed for dependencies (SPDX ids; expressions are split on
-# AND/OR/WITH and every id must be in this list).
-ALLOWED_LICENSES='MIT Apache-2.0 BSD-2-Clause BSD-3-Clause ISC Zlib Unicode-3.0 Unicode-DFS-2016 Unlicense 0BSD CC0-1.0 MPL-2.0 GPL-3.0-or-later AGPL-3.0-or-later LLVM-exception BSL-1.0'
+# Licenses allowed for dependencies (SPDX ids). See scripts/license_check.py
+# for how OR/AND/WITH expressions are evaluated.
+ALLOWED_LICENSES='MIT MIT-0 Apache-2.0 BSD-2-Clause BSD-3-Clause ISC Zlib Unicode-3.0 Unicode-DFS-2016 Unlicense 0BSD CC0-1.0 MPL-2.0 GPL-3.0-or-later AGPL-3.0-or-later LLVM-exception BSL-1.0'
 
 step() { printf '\n== %s\n' "$1"; }
 
@@ -37,16 +38,17 @@ fi
 echo "tests passed: $passed"
 
 step "ascii"
-bad=0
+ascii_files=()
 while IFS= read -r f; do
     [ -f "$f" ] || continue
     if printf '%s\n' "$f" | grep -qE "$ASCII_EXCEPTIONS"; then continue; fi
-    if grep -nP '[^\x00-\x7F]' "$f" /dev/null; then bad=1; fi
+    ascii_files+=("$f")
 done < <(project_files)
-if [ "$bad" -ne 0 ]; then
-    echo "check: non-ASCII characters found (see AGENTS.md rule 1)" >&2
+if ! python3 -I scripts/ascii_check.py "${ascii_files[@]}"; then
+    echo "check: non-ASCII characters outside string literals (AGENTS.md rule 1)" >&2
     exit 1
 fi
+echo ok
 
 step "license headers"
 bad=0
@@ -70,21 +72,7 @@ done < <(project_files)
 if [ "$bad" -ne 0 ]; then exit 1; fi
 
 step "dependency licenses"
-cargo metadata --format-version 1 --locked | python3 -I -c '
-import json, re, sys
-allowed = set(sys.argv[1].split())
-bad = []
-for pkg in json.load(sys.stdin)["packages"]:
-    if pkg.get("source") is None:
-        continue
-    lic = pkg.get("license") or ""
-    ids = [t for t in re.split(r"[()\s/]+|\bAND\b|\bOR\b|\bWITH\b", lic) if t and t not in ("AND", "OR", "WITH")]
-    if not ids or any(i not in allowed for i in ids):
-        bad.append(pkg["name"] + " " + pkg["version"] + ": " + (lic or "(none)"))
-for b in bad:
-    print("disallowed or missing license:", b, file=sys.stderr)
-sys.exit(1 if bad else 0)
-' "$ALLOWED_LICENSES"
+cargo metadata --format-version 1 --locked | python3 -I scripts/license_check.py $ALLOWED_LICENSES
 echo ok
 
 step "no tracked dictionaries"
