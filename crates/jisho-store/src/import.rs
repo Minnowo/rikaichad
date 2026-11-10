@@ -225,9 +225,11 @@ fn import_terms(
 ) -> Result<u64, StoreError> {
     let mut insert = tx.prepare(
         "INSERT INTO terms (dictionary, expression, reading, definition_tags, rules, score,
-             glossary, sequence, term_tags)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             sequence, term_tags)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
     )?;
+    let mut insert_glossary =
+        tx.prepare("INSERT INTO term_glossaries (id, glossary) VALUES (?1, ?2)")?;
     let mut row_index: u64 = 0;
     let rows = stream_rows(
         reader,
@@ -241,17 +243,17 @@ fn import_terms(
             }
             let glossary = serde_json::to_string(&row.glossary)
                 .map_err(|e| invalid(format!("glossary: {e}")))?;
-            insert.execute(params![
+            let term_id = insert.insert(params![
                 state.id,
                 row.term,
                 row.reading,
                 row.definition_tags,
                 row.rules,
                 row.score,
-                glossary,
                 row.sequence,
                 row.term_tags
             ])?;
+            insert_glossary.execute(params![term_id, glossary])?;
             row_index += 1;
             Ok(())
         },

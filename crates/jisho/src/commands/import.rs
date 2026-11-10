@@ -47,6 +47,9 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
             failed += 1;
         }
     }
+    if let Some(peak) = crate::peak_memory::peak_rss_bytes() {
+        info(&format!("peak memory {:.1} MB", peak as f64 / 1_000_000.0));
+    }
     if failed > 0 {
         return Err(CliError::new(format!(
             "{failed} of {} dictionaries failed to import",

@@ -62,6 +62,10 @@ impl Store {
                 what: format!("with id {id}"),
             });
         }
+        tx.execute(
+            "DELETE FROM term_glossaries WHERE id IN (SELECT id FROM terms WHERE dictionary = ?1)",
+            [id],
+        )?;
         for table in DATA_TABLES {
             tx.execute(&format!("DELETE FROM {table} WHERE dictionary = ?1"), [id])?;
         }

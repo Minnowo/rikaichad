@@ -30,6 +30,12 @@ used as public test fixtures, and `dictionaries/` is git-ignored.
 Import must stream: one bank file can be 125 MB of JSON, one dictionary
 3.5 GB uncompressed. Size caps must allow these.
 
+## Key lengths
+
+Longest index keys (bytes, UTF-8): term 9,893 (Babylon Japanese-English,
+331 terms over 4 KiB, phrase entries), reading 746 (PixivLight), term meta
+378 (BCCWJ), tag name 18, kanji 7. jisho caps keys at 64 KiB.
+
 ## Feature usage
 
 - Glossary items: string 5.4M, structured-content 5.3M (41 of 92 dicts),

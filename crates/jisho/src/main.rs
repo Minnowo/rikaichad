@@ -5,6 +5,7 @@
 mod commands;
 mod data_dir;
 mod output;
+mod peak_memory;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -27,6 +28,7 @@ Commands:
   remove <ID>       Remove a dictionary
   lookup <TEXT>     Look up a word
   serve             Run the HTTP API
+  bench             Measure lookup latency on the current store
 
 Options:
   --store PATH      Store file (default: $JISHO_STORE, else the platform
@@ -81,6 +83,7 @@ fn run() -> Result<ExitCode, CliError> {
                     "remove" => commands::remove::run(&mut parser, &ctx),
                     "lookup" => commands::lookup::run(&mut parser, &ctx),
                     "serve" => commands::serve::run(&mut parser, &ctx),
+                    "bench" => commands::bench::run(&mut parser, &ctx),
                     other => Err(CliError::new(format!(
                         "unknown command {other:?}\nRun 'jisho --help' for usage."
                     ))),

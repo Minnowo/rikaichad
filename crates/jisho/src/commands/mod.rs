@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! CLI commands, one per file. Each exposes `USAGE` and `run`.
 
+pub mod bench;
 pub mod import;
 pub mod list;
 pub mod lookup;

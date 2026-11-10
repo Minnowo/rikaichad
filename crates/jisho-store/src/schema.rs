@@ -7,6 +7,12 @@
 //! kanjiMeta, tagMeta, dictionaries); media is not stored (text only).
 //! Row ids are assigned in import order, which Yomitan's merge mode sorts
 //! by.
+//!
+//! Glossaries live in `term_glossaries` (same id as the term) rather than in
+//! `terms`: a scan matches hundreds of rows, ranks them using the small
+//! columns only, and loads glossaries just for the entries it returns.
+//! Keeping `terms` rows small also keeps them in the page cache
+//! (measured in milestone 1, docs/brief.md section 5).
 
 use rusqlite::{Connection, OptionalExtension};
 
@@ -44,9 +50,12 @@ CREATE TABLE terms (
     definition_tags TEXT NOT NULL,
     rules           TEXT NOT NULL,
     score           REAL NOT NULL,
-    glossary        TEXT NOT NULL,
     sequence        INTEGER NOT NULL,
     term_tags       TEXT NOT NULL
+);
+CREATE TABLE term_glossaries (
+    id       INTEGER PRIMARY KEY,
+    glossary TEXT NOT NULL
 );
 CREATE INDEX terms_expression ON terms (expression);
 CREATE INDEX terms_reading ON terms (reading);

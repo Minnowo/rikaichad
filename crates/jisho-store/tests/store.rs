@@ -25,6 +25,7 @@ fn imports_fixture_with_counts_styles_and_no_warnings() {
             tags: 2
         }
     );
+    assert_eq!(store.check_integrity().unwrap(), Vec::<String>::new());
     let dicts = store.dictionaries().unwrap();
     assert_eq!(dicts.len(), 1);
     assert_eq!(dicts[0].index.title, "A");
@@ -44,11 +45,11 @@ fn exact_lookup_by_term_or_reading_with_import_normalization() {
     let by_term = store.lookup_exact("食べる", 10).unwrap();
     assert_eq!(by_term.len(), 1);
     let entry = &by_term[0];
-    assert_eq!(entry.reading, "たべる");
-    assert_eq!(entry.definition_tags, ["v1", "vt"]);
-    assert_eq!(entry.rules, ["v1"]);
-    assert_eq!(entry.term_tags, ["P"]);
-    assert_eq!(entry.sequence, 100);
+    assert_eq!(entry.hit.reading, "たべる");
+    assert_eq!(entry.hit.definition_tags, ["v1", "vt"]);
+    assert_eq!(entry.hit.rules, ["v1"]);
+    assert_eq!(entry.hit.term_tags, ["P"]);
+    assert_eq!(entry.hit.sequence, 100);
     // {type: "text"} glossary items are flattened at import, like Yomitan.
     assert_eq!(entry.glossary, [json!("to eat"), json!("to consume")]);
 
@@ -57,9 +58,9 @@ fn exact_lookup_by_term_or_reading_with_import_normalization() {
 
     // Empty reading becomes the term; null definition tags become none.
     let katakana = store.lookup_exact("カタカナ", 10).unwrap();
-    assert_eq!(katakana[0].reading, "カタカナ");
+    assert_eq!(katakana[0].hit.reading, "カタカナ");
     let rice = store.lookup_exact("ご飯", 10).unwrap();
-    assert!(rice[0].definition_tags.is_empty());
+    assert!(rice[0].hit.definition_tags.is_empty());
 
     assert!(store.lookup_exact("無い", 10).unwrap().is_empty());
 }
@@ -83,9 +84,32 @@ fn results_follow_dictionary_order_and_respect_limit() {
     )
     .unwrap();
     let all = store.lookup_exact("食べる", 10).unwrap();
-    let titles: Vec<&str> = all.iter().map(|e| e.dictionary_title.as_str()).collect();
+    let titles: Vec<&str> = all
+        .iter()
+        .map(|e| e.hit.dictionary_title.as_str())
+        .collect();
     assert_eq!(titles, ["First", "Second"]);
     assert_eq!(store.lookup_exact("食べる", 1).unwrap().len(), 1);
+}
+
+#[test]
+fn batched_find_then_glossaries_and_index_use() {
+    let dir = TempDir::new("store-many");
+    let mut store = open(&dir);
+    import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    let texts: Vec<String> = ["食べる", "ごはん", "食べる", "無い"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let hits = store.find_terms(&texts).unwrap();
+    let terms: Vec<&str> = hits.iter().map(|r| r.term.as_str()).collect();
+    assert_eq!(terms, ["食べる", "ご飯"]);
+    assert!(store.find_terms(&[]).unwrap().is_empty());
+    let records = store.with_glossaries(hits).unwrap();
+    assert_eq!(records[1].glossary, [json!("cooked rice"), json!("meal")]);
+    let plan = store.explain_find_terms(3).unwrap().join("\n");
+    assert!(plan.contains("terms_expression"), "{plan}");
+    assert!(plan.contains("terms_reading"), "{plan}");
 }
 
 #[test]
@@ -153,9 +177,10 @@ fn remove_deletes_all_rows_and_unknown_id_is_not_found() {
     let a = import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
     import(&mut store, &dir, "b.zip", fixture::terms_dictionary("B")).unwrap();
     store.remove(a.id).unwrap();
+    assert_eq!(store.check_integrity().unwrap(), Vec::<String>::new());
     let left = store.lookup_exact("食べる", 10).unwrap();
     assert_eq!(left.len(), 1);
-    assert_eq!(left[0].dictionary_title, "B");
+    assert_eq!(left[0].hit.dictionary_title, "B");
     assert!(matches!(
         store.remove(a.id).unwrap_err(),
         StoreError::NotFound { .. }

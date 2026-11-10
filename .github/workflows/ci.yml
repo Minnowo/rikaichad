@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Build, lint and test on Linux, macOS and Windows; check that a store file
+# written on Linux works unchanged on the other two (brief section 6,
+# milestone 1).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: never
+  RUST_BACKTRACE: "1"
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+      - name: Full check script (Linux, macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: scripts/check.sh
+      - name: Build, lint and test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+  portable-store-write:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Write a store
+        env:
+          JISHO_PORTABLE_STORE: ${{ runner.temp }}/portable.sqlite
+        run: cargo test -p jisho --test portable_store --locked -- --ignored --exact write_portable_store
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-store
+          path: ${{ runner.temp }}/portable.sqlite
+          if-no-files-found: error
+
+  portable-store-read:
+    needs: portable-store-write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        shell: bash
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-store
+          path: ${{ runner.temp }}/store
+      - name: Read the Linux store
+        shell: bash
+        env:
+          JISHO_PORTABLE_STORE: ${{ runner.temp }}/store/portable.sqlite
+        run: cargo test -p jisho --test portable_store --locked -- --ignored --exact read_portable_store

@@ -53,18 +53,19 @@ impl TermEntryJson {
     /// Converts a stored term into its JSON form, rendering glossary text.
     pub fn from_record(record: TermRecord) -> TermEntryJson {
         let glossary_text = record.glossary.iter().map(glossary_item_text).collect();
+        let hit = record.hit;
         TermEntryJson {
             dictionary: DictionaryRefJson {
-                id: record.dictionary_id,
-                title: record.dictionary_title,
+                id: hit.dictionary_id,
+                title: hit.dictionary_title,
             },
-            term: record.term,
-            reading: record.reading,
-            definition_tags: record.definition_tags,
-            rules: record.rules,
-            score: record.score,
-            sequence: record.sequence,
-            term_tags: record.term_tags,
+            term: hit.term,
+            reading: hit.reading,
+            definition_tags: hit.definition_tags,
+            rules: hit.rules,
+            score: hit.score,
+            sequence: hit.sequence,
+            term_tags: hit.term_tags,
             glossary: record.glossary,
             glossary_text,
         }

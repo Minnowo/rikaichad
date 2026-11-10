@@ -361,6 +361,32 @@ done-criteria, and the user's private collection for the real-world report.
 
 Benchmarks report measured numbers; no target is claimed met without one.
 
+### Milestone 1 measurements (2026-11-10)
+
+Measured on the dev machine (12 cores, 15 GB RAM, Linux), release build,
+the user's collection: 104 zips, 99 imported (5 rejected as duplicate
+titles, as Yomitan does), 9.06M terms, 14.8M rows in total.
+
+| Measurement                                  | Result                         | Target            |
+|----------------------------------------------|--------------------------------|-------------------|
+| Import of all 104 zips                       | 592 s                          | reported          |
+| Import peak memory                           | 90 MB (95 MB for the 3.5 GB dict) | < 1 GB         |
+| Largest dictionary (3.5 GB, 1.2M terms)      | 167 s into a fresh store, 222 s into the full store | reported |
+| Remove the largest dictionary                | 28 s; file keeps its size, freed pages reused by the next import | reported |
+| Store size                                   | 11.6 GB (raw bank JSON 17.8 GB) | reported          |
+| 16-char scan, prefixes only, match           | p50 0.64 ms, p99 3.8 ms        | p50 5, p99 20 ms  |
+| Same, plus glossaries of the first 100 hits  | p50 1.9 ms, p99 5.7 ms         | (same)            |
+
+`jisho bench` with `bench/sentences.txt` (967 scans, 11,367 candidates).
+The first layout (glossary inside `terms`) gave p50 12 ms / p99 78 ms for
+the same scans: every match loaded and parsed its glossary. Glossaries now
+live in `term_glossaries` and are loaded only for returned entries.
+Prefix-only scans are a lower bound; milestone 2 adds deinflection
+candidates and re-measures against the targets.
+
+Open: glossary compression (store is 65% of raw JSON) and import speed
+into a large existing store; neither is needed for the targets now.
+
 ### HTTP
 
 axum + tokio (user decision). Default multi-threaded runtime with a small

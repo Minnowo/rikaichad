@@ -9,6 +9,7 @@
 mod dictionaries;
 mod error;
 mod import;
+mod integrity;
 mod lookup;
 mod records;
 mod schema;
@@ -17,7 +18,7 @@ mod store;
 
 pub use error::StoreError;
 pub use import::{ImportProgress, ImportReport};
-pub use records::{Counts, DictionaryInfo, TermRecord};
+pub use records::{Counts, DictionaryInfo, TermHit, TermRecord};
 pub use schema::STORE_VERSION;
 pub use sha256::sha256_hex;
 pub use store::Store;

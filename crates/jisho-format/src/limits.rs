@@ -19,7 +19,8 @@ pub struct Limits {
     /// Maximum total uncompressed size of all bank files, in bytes.
     pub max_total_bank_bytes: u64,
     /// Maximum length of a term, reading, kanji character or tag name, in
-    /// bytes. These become index keys in the store.
+    /// bytes. These become index keys in the store. The longest seen in a
+    /// real dictionary is 9,893 bytes (a Babylon phrase entry).
     pub max_key_bytes: usize,
 }
 
@@ -31,7 +32,7 @@ impl Default for Limits {
             max_styles_bytes: 8 << 20,
             max_bank_bytes: 1 << 30,
             max_total_bank_bytes: 64 << 30,
-            max_key_bytes: 4096,
+            max_key_bytes: 64 * 1024,
         }
     }
 }

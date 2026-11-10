@@ -33,9 +33,9 @@ pub struct DictionaryInfo {
     pub counts: Counts,
 }
 
-/// One term entry as stored (after Yomitan's import normalization).
+/// A matched term without its glossary: the small columns a scan ranks by.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TermRecord {
+pub struct TermHit {
     /// Row id; follows import order.
     pub id: i64,
     pub dictionary_id: i64,
@@ -47,10 +47,16 @@ pub struct TermRecord {
     pub definition_tags: Vec<String>,
     pub rules: Vec<String>,
     pub score: f64,
-    /// JSON array of glossary items.
-    pub glossary: Vec<Value>,
     pub sequence: i64,
     pub term_tags: Vec<String>,
+}
+
+/// One term entry as stored (after Yomitan's import normalization).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermRecord {
+    pub hit: TermHit,
+    /// JSON array of glossary items.
+    pub glossary: Vec<Value>,
 }
 
 /// Splits a space-separated tag or rule list, dropping empty parts.
