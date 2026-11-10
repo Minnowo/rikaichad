@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::error::ApiError;
 use crate::json_body::read_json;
-use crate::lookup_json::lookup_response;
+use crate::lookup_json::{LookupMode, LookupRequest as Lookup, run_lookup};
 use crate::response::json_response;
 use crate::state::AppState;
 
@@ -23,6 +23,7 @@ struct LookupRequest {
     text: String,
     mode: Option<String>,
     limit: Option<usize>,
+    primary_reading: Option<String>,
 }
 
 pub async fn terms_lookup(
@@ -37,38 +38,30 @@ pub async fn terms_lookup(
             "\"text\" must be 1 to {MAX_TEXT_CHARS} characters, got {chars}"
         )));
     }
-    match request.mode.as_deref() {
-        Some("exact") => {}
-        Some("scan") | None => {
-            return Err(ApiError::bad_request(
-                "\"mode\": \"scan\" is not implemented yet (milestone 2); use \"exact\"",
-            ));
-        }
+    let mode = match request.mode.as_deref() {
+        Some("scan") | None => LookupMode::Scan,
+        Some("exact") => LookupMode::Exact,
         Some(other) => {
             return Err(ApiError::bad_request(format!(
-                "\"mode\" must be \"exact\" or \"scan\", got {other:?}"
+                "\"mode\" must be \"scan\" or \"exact\", got {other:?}"
             )));
         }
-    }
+    };
     let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
     if !(1..=MAX_LIMIT).contains(&limit) {
         return Err(ApiError::bad_request(format!(
             "\"limit\" must be 1 to {MAX_LIMIT}, got {limit}"
         )));
     }
-    let text = request.text;
-    let max_bytes = state.config.max_response_bytes;
+    let lookup = Lookup {
+        text: request.text,
+        mode,
+        limit,
+        primary_reading: request.primary_reading.unwrap_or_default(),
+        max_bytes: state.config.max_response_bytes,
+    };
     let response = state
-        .store_work(move |store| {
-            // One extra hit tells whether `limit` cut the results.
-            let mut hits = store.find_terms(std::slice::from_ref(&text), limit + 1)?;
-            let over_limit = hits.len() > limit;
-            hits.truncate(limit);
-            let (records, over_budget) = store.with_glossaries_within(hits, max_bytes)?;
-            let mut response = lookup_response(&text, records, limit, max_bytes);
-            response.truncated |= over_limit || over_budget;
-            Ok(response)
-        })
+        .store_work(move |store| Ok(run_lookup(store, &lookup)?))
         .await?;
     Ok(json_response(StatusCode::OK, &response))
 }

@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 jisho-api = { path = "../jisho-api" }
 jisho-format = { path = "../jisho-format" }
+jisho-lookup = { path = "../jisho-lookup" }
 jisho-store = { path = "../jisho-store" }
 lexopt = "0.3.2"
 serde = "1"

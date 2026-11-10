@@ -55,8 +55,8 @@ impl InflectionSource {
     }
 }
 
-/// Inflections undone to reach the headword, outermost first (Yomitan's
-/// trace order).
+/// Inflections undone to reach the headword, the one nearest the
+/// dictionary form first (Yomitan's trace order).
 #[derive(Debug, Clone, PartialEq)]
 pub struct InflectionChain {
     pub source: InflectionSource,

@@ -10,7 +10,8 @@ use jisho_store::{Store, StoreError};
 #[derive(Debug, Clone)]
 pub struct FindTermsOptions {
     /// Cut the text at the first character that is not Japanese, Chinese or
-    /// Korean (Yomitan default: true).
+    /// Korean. Yomitan sets this to `!scanning.alphanumeric`, whose default
+    /// is true, so the effective default is false (and romaji input works).
     pub remove_non_japanese_characters: bool,
     /// Undo inflections (Yomitan default: true).
     pub deinflect: bool,
@@ -23,7 +24,7 @@ pub struct FindTermsOptions {
 impl Default for FindTermsOptions {
     fn default() -> Self {
         FindTermsOptions {
-            remove_non_japanese_characters: true,
+            remove_non_japanese_characters: false,
             deinflect: true,
             primary_reading: String::new(),
             max_hits: 50_000,

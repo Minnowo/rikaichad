@@ -2,9 +2,9 @@
 //! HTTP/JSON API for jisho, specified in `docs/api.md`.
 //!
 //! [`run`] serves the API until Ctrl-C. [`router`] builds the same routes
-//! for tests. The JSON types ([`TermEntryJson`], [`DictionaryJson`],
-//! [`LookupResponse`]) are public so the CLI's `--json` output is
-//! byte-for-byte the API's.
+//! for tests. [`run_lookup`] and the JSON types ([`LookupResponse`],
+//! [`DictionaryJson`]) are public so the CLI's `lookup` behaves exactly
+//! like the API and its `--json` output is byte-for-byte the API's.
 
 mod config;
 mod dictionary_json;
@@ -25,6 +25,9 @@ pub use config::DEFAULT_BIND;
 pub use config::ServeConfig;
 pub use dictionary_json::{DictionaryJson, DictionaryListResponse};
 pub use error::ApiError;
-pub use lookup_json::{LookupResponse, MatchedJson, TermEntryJson, lookup_response};
+pub use lookup_json::{
+    DefinitionJson, HeadwordJson, InflectionChainJson, LookupMode, LookupRequest, LookupResponse,
+    MatchedJson, TermEntryJson, run_lookup,
+};
 pub use server::{ServerError, router, run};
 pub use text_length::TextLength;

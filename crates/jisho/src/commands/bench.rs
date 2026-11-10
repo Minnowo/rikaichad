@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! `jisho bench`: measure lookup latency against the current store.
 //!
-//! Simulates what a Yomitan-style scan asks the store: for every start
-//! position in every sentence, all prefixes of the next `--max-length`
-//! characters are candidate strings. Deinflection (milestone 2) adds more
-//! candidates per prefix, so these numbers are a lower bound for a scan.
-//! Timed per scan: matching all candidates in one batched query (what
-//! ranking needs), and matching plus loading glossaries for the first
-//! `--limit` hits (what a lookup response needs).
+//! For every start position in every sentence, the next `--max-length`
+//! characters are looked up the way the API does it: a Yomitan-style scan
+//! (all prefixes, text variants, deinflections). Timed per scan: finding
+//! and ranking entries without glossaries, and the complete lookup with
+//! glossaries for the first `--limit` entries.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
+use jisho_api::{LookupMode, LookupRequest, run_lookup};
+use jisho_lookup::{EnabledDictionaries, FindTermsOptions, find_terms};
 use lexopt::prelude::*;
 
 use super::Context;
@@ -22,19 +22,17 @@ use crate::peak_memory::peak_rss_bytes;
 pub const USAGE: &str = "\
 Usage: jisho bench [--sentences FILE] [--max-length N] [--limit N]
 
-Measures lookup latency on the current store. Every prefix (up to
---max-length characters, default 16) at every start position of every line
-in FILE (default bench/sentences.txt) is a candidate. Each scan is timed
-matching all candidates in one query, and matching plus loading the
-glossaries of the first --limit hits (default 100). Run it on a machine
+Measures scan latency on the current store. From every start position of
+every line in FILE (default bench/sentences.txt), the next --max-length
+characters (default 16) are looked up like POST /v1/terms/lookup does:
+timed once for finding and ranking entries, once for the full lookup with
+glossaries of the first --limit entries (default 100). Run it on a machine
 with nothing else busy.
 ";
 
 const DEFAULT_SENTENCES: &str = "bench/sentences.txt";
 const DEFAULT_MAX_LENGTH: usize = 16;
 const DEFAULT_LIMIT: usize = 100;
-/// Cap on matched rows per scan, far above what a real scan matches.
-const MAX_HITS: usize = 100_000;
 
 pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliError> {
     let mut sentences = PathBuf::from(DEFAULT_SENTENCES);
@@ -71,31 +69,38 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     let terms: u64 = dictionaries.iter().map(|d| d.counts.terms).sum();
     let store_bytes = file_size(&ctx.store_path);
 
+    let dictionaries_enabled = EnabledDictionaries::from_store(&store)?;
+    let options = FindTermsOptions::default();
+    let request = |text: &str| LookupRequest {
+        text: text.to_string(),
+        mode: LookupMode::Scan,
+        limit,
+        primary_reading: String::new(),
+        max_bytes: usize::MAX,
+    };
+
     // Warm the page cache so every pass sees the same state.
     for scan in &scans {
-        let mut hits = store.find_terms(scan, MAX_HITS)?;
-        hits.truncate(limit);
-        store.with_glossaries(hits)?;
+        run_lookup(&store, &request(scan))?;
     }
 
-    let mut match_only = Vec::with_capacity(scans.len());
+    let mut rank_only = Vec::with_capacity(scans.len());
     let mut matched = 0usize;
     for scan in &scans {
         let start = Instant::now();
-        matched += store.find_terms(scan, MAX_HITS)?.len();
-        match_only.push(start.elapsed());
+        matched += find_terms(&store, scan, &dictionaries_enabled, &options)?
+            .entries
+            .len();
+        rank_only.push(start.elapsed());
     }
 
-    let mut with_glossaries = Vec::with_capacity(scans.len());
+    let mut full_lookup = Vec::with_capacity(scans.len());
     for scan in &scans {
         let start = Instant::now();
-        let mut hits = store.find_terms(scan, MAX_HITS)?;
-        hits.truncate(limit);
-        store.with_glossaries(hits)?;
-        with_glossaries.push(start.elapsed());
+        run_lookup(&store, &request(scan))?;
+        full_lookup.push(start.elapsed());
     }
 
-    let probes: usize = scans.iter().map(Vec::len).sum();
     let mut report = String::new();
     report.push_str(&format!(
         "store: {} ({}), {} dictionaries, {} terms\n",
@@ -105,29 +110,25 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         terms
     ));
     report.push_str(&format!(
-        "input: {} lines, {} scans of up to {max_length} chars, {probes} candidates, {matched} rows matched\n",
+        "input: {} lines, {} scans of up to {max_length} chars, {matched} entries found\n",
         text.lines().filter(|l| !l.trim().is_empty()).count(),
         scans.len()
     ));
-    report.push_str(&summary("scan, match only", &mut match_only));
+    report.push_str(&summary("scan, find and rank", &mut rank_only));
     report.push_str(&summary(
-        &format!("scan, match + glossaries of first {limit}"),
-        &mut with_glossaries,
+        &format!("scan, full lookup with glossaries of first {limit}"),
+        &mut full_lookup,
     ));
     if let Some(peak) = peak_rss_bytes() {
         report.push_str(&format!("peak memory: {}\n", megabytes(peak)));
-    }
-    report.push_str("query plan:\n");
-    for line in store.explain_find_terms(3)? {
-        report.push_str(&format!("  {line}\n"));
     }
     out(&report)?;
     Ok(ExitCode::SUCCESS)
 }
 
-/// One scan per start position: all prefixes of the next `max_length`
-/// characters, skipping starts at whitespace or punctuation.
-fn build_scans(text: &str, max_length: usize) -> Vec<Vec<String>> {
+/// One scan text per start position: the next `max_length` characters,
+/// skipping starts at whitespace or punctuation.
+fn build_scans(text: &str, max_length: usize) -> Vec<String> {
     let mut scans = Vec::new();
     for line in text.lines() {
         let chars: Vec<char> = line.trim().chars().collect();
@@ -139,11 +140,7 @@ fn build_scans(text: &str, max_length: usize) -> Vec<Vec<String>> {
                 continue;
             }
             let end = start.saturating_add(max_length).min(chars.len());
-            let window = chars.get(start..end).unwrap_or_default();
-            let scan: Vec<String> = (1..=window.len())
-                .map(|n| window.iter().take(n).collect())
-                .collect();
-            scans.push(scan);
+            scans.push(chars.get(start..end).unwrap_or_default().iter().collect());
         }
     }
     scans
@@ -200,16 +197,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scans_are_prefixes_from_each_non_punctuation_start() {
-        let scans = build_scans("ab、c\n", 2);
-        assert_eq!(
-            scans,
-            vec![
-                vec!["a".to_string(), "ab".to_string()],
-                vec!["b".to_string(), "b、".to_string()],
-                vec!["c".to_string()],
-            ]
-        );
+    fn scans_start_at_each_non_punctuation_character() {
+        assert_eq!(build_scans("ab、c\n", 2), ["ab", "b、", "c"]);
     }
 
     #[test]

@@ -60,15 +60,43 @@ fn exact_lookup_returns_entries_and_lengths() {
     assert_eq!(res.status, 200);
     let body = res.json();
     let entry = &body["entries"][0];
-    assert_eq!(entry["dictionary"]["title"], "Fixture");
-    assert_eq!(entry["term"], "食う");
-    assert_eq!(entry["reading"], "くう");
-    assert_eq!(entry["glossary"][0]["type"], "structured-content");
-    assert_eq!(entry["glossary_text"][0], "- to eat (rough)\n- to 喰(く)う");
+    let definition = &entry["definitions"][0];
+    assert_eq!(definition["dictionary"]["title"], "Fixture");
+    assert_eq!(entry["headwords"][0]["term"], "食う");
+    assert_eq!(entry["headwords"][0]["reading"], "くう");
+    assert_eq!(definition["glossary"][0]["type"], "structured-content");
+    assert_eq!(
+        definition["glossary_text"][0],
+        "- to eat (rough)\n- to 喰(く)う"
+    );
     assert_eq!(body["matched"]["text"], "食う");
     assert_eq!(body["matched"]["length"]["utf16"], 2);
     assert_eq!(body["matched"]["length"]["chars"], 2);
     assert_eq!(body["truncated"], false);
+}
+
+#[test]
+fn scan_deinflects_and_reports_the_chain() {
+    let dir = TempDir::new("http-scan");
+    let addr = start(&dir, |_| {});
+    let res = post_json(addr, "/v1/terms/lookup", r#"{"text":"食べられなかったよ"}"#);
+    assert_eq!(res.status, 200);
+    let body = res.json();
+    let entry = &body["entries"][0];
+    assert_eq!(entry["headwords"][0]["term"], "食べる");
+    let source = &entry["headwords"][0]["sources"][0];
+    assert_eq!(source["original_text"], "食べられなかった");
+    assert_eq!(source["deinflected_text"], "食べる");
+    let rules: Vec<&str> = entry["inflections"][0]["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["name"].as_str().unwrap())
+        .collect();
+    // Yomitan order: the inflection nearest the dictionary form first.
+    assert_eq!(rules, ["potential or passive", "negative", "-た"]);
+    assert_eq!(body["matched"]["text"], "食べられなかった");
+    assert_eq!(body["matched"]["length"]["utf16"], 8);
 }
 
 #[test]
@@ -97,7 +125,6 @@ fn lookup_request_validation() {
     let dir = TempDir::new("http-validation");
     let addr = start(&dir, |c| c.max_json_body = 1024);
     let cases = [
-        (r#"{"text":"x"}"#, 400, "bad_request"),
         (
             r#"{"text":"x","mode":"exact","extra":1}"#,
             400,

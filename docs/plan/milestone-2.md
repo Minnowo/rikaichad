@@ -71,7 +71,7 @@ Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
 5.  [x] jisho-lookup: variants, deinflections, bulk matching, dictionary
         deinflections, entry creation, duplicate handling, sort.
 6.  [x] Translator parity test (subset above).
-7.  [ ] API `mode: "scan"` (default) and CLI `lookup` using it; response
+7.  [x] API `mode: "scan"` (default) and CLI `lookup` using it; response
         gains sources and rule chains; docs/api.md updated.
 8.  [ ] bench with real scans; record numbers; tune if targets missed.
 9.  [ ] Independent review; fix findings.
@@ -86,3 +86,12 @@ Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
   Mutations (no sort; reading claims before term) make 4 and 3 cases fail.
 - The task description said 38 cases; the correct count is 32 (the other
   split cases use textReplacements or other languages).
+- Default removeNonJapaneseCharacters is false, as in Yomitan with its
+  default scanning.alphanumeric = true (the translator test preset sets it
+  to true; the parity test passes its value through). This makes romaji
+  input work.
+- Exact mode is Yomitan's deinflect = false: only the whole text, no
+  variants.
+- Public corpus (JMdict + KANJIDIC), 967 real scans of 16 chars: find and
+  rank p50 0.71 ms / p99 1.95 ms; full lookup with glossaries of 100
+  entries p50 1.00 ms / p99 2.75 ms.

@@ -70,7 +70,7 @@ Every error response has this body:
 | Method | Path                         | Milestone | Mutates |
 |--------|------------------------------|-----------|---------|
 | GET    | `/v1/health`                 | 1         | no      |
-| POST   | `/v1/terms/lookup`           | 1 (exact), 2-3 (scan) | no |
+| POST   | `/v1/terms/lookup`           | 1 (exact), 2 (scan), 3 (grouping, metadata) | no |
 | GET    | `/v1/dictionaries`           | 1         | no      |
 | POST   | `/v1/kanji/lookup`           | 3         | no      |
 | POST   | `/v1/text/parse`             | 4         | no      |
@@ -94,47 +94,84 @@ With `--read-only`, every "Mutates: yes" endpoint returns `403 read_only`.
 Request:
 
 ```json
-{"text": "taberu", "mode": "exact", "limit": 100}
+{"text": "tabetakunai", "mode": "scan", "limit": 100}
 ```
 
-| Field   | Type   | Default  | Meaning                                              |
-|---------|--------|----------|------------------------------------------------------|
-| `text`  | string | required | Text to look up (1 to 1000 chars)                    |
-| `mode`  | string | `"scan"` | `"exact"`: entries whose term or reading equals `text`. `"scan"`: Yomitan-style scan from the start of `text` (milestone 2) |
-| `limit` | int    | 100      | Maximum entries returned (1 to 1000)                 |
+| Field             | Type   | Default  | Meaning                                              |
+|-------------------|--------|----------|------------------------------------------------------|
+| `text`            | string | required | Text to look up (1 to 1000 chars)                    |
+| `mode`            | string | `"scan"` | `"scan"`: Yomitan-style lookup of the start of `text`: its longest prefixes, with inflections undone and kana, width, romaji and kanji-variant forms tried. `"exact"`: entries whose term or reading is exactly `text` |
+| `limit`           | int    | 100      | Maximum entries returned (1 to 1000)                 |
+| `primary_reading` | string | none     | Entries with this reading sort first                 |
 
-Milestone 1 implements `mode: "exact"` only; `"scan"` returns `400` until
-milestone 2.
+Entries come in Yomitan's order (longest match first, then fewer
+transformations, exact matches, dictionary order, score, ...). Each entry
+has one headword and one definition (Yomitan's "split" mode); grouping
+modes, frequencies, pitch accent and expanded tags arrive in milestone 3.
 
-Response (milestone 1 shape; milestone 3 adds grouping, inflection
-chains, frequencies and pitch):
+Response:
 
 ```json
 {
   "entries": [
     {
-      "dictionary": {"id": 1, "title": "JMdict"},
-      "term": "...",
-      "reading": "...",
-      "definition_tags": ["v1", "vt"],
-      "rules": ["v1"],
+      "headwords": [
+        {
+          "term": "...",
+          "reading": "...",
+          "sources": [
+            {
+              "original_text": "...",
+              "transformed_text": "...",
+              "deinflected_text": "...",
+              "match_type": "exact",
+              "match_source": "term",
+              "is_primary": true
+            }
+          ],
+          "term_tags": ["P"],
+          "word_classes": ["v1"]
+        }
+      ],
+      "definitions": [
+        {
+          "dictionary": {"id": 1, "title": "JMdict"},
+          "id": 1234,
+          "score": 0,
+          "sequences": [1358280],
+          "definition_tags": ["v1", "vt"],
+          "glossary": ["to eat"],
+          "glossary_text": ["to eat"]
+        }
+      ],
+      "inflections": [
+        {"source": "algorithm", "rules": [{"name": "negative", "description": "..."}]}
+      ],
+      "text_processors": [["convertHiraganaToKatakana"]],
       "score": 0,
-      "sequence": 1358280,
-      "term_tags": ["P"],
-      "glossary": ["to eat", {"type": "structured-content", "content": []}],
-      "glossary_text": ["to eat", "..."]
+      "dictionary_index": 0,
+      "is_primary": true,
+      "max_original_text_length": 5
     }
   ],
-  "matched": {"text": "...", "length": {"utf16": 3, "chars": 3}},
+  "matched": {"text": "...", "length": {"utf16": 5, "chars": 5}},
   "truncated": false
 }
 ```
 
-- `glossary` is the dictionary's glossary array as imported (raw JSON;
-  `{type: "text"}` items are already flattened to strings, as in
-  Yomitan). Clients that render structured content use this.
-- `glossary_text` has one plain-text rendering per `glossary` item.
-- Entries are ordered by dictionary order, then import order.
+- `sources[].original_text` is the input prefix that matched;
+  `transformed_text` is it after text preprocessing; `deinflected_text` is
+  what was looked up. `match_source` says whether the term or the reading
+  matched.
+- `inflections` lists one chain per way the entry was reached; each chain
+  starts at the inflection nearest the dictionary form (Yomitan's order).
+  Entries reached without undoing an inflection have no chains.
+- `text_processors` lists the preprocessors applied (Yomitan's ids), one
+  chain per way; empty when the text matched as typed.
+- `glossary` is the dictionary's glossary as imported, without Yomitan's
+  deinflection-reference items; `glossary_text` has one plain-text
+  rendering per item.
+- `matched.text` is the longest input prefix that produced an entry.
 
 ### GET /v1/dictionaries
 

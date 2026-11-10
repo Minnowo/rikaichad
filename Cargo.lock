@@ -299,6 +299,7 @@ version = "0.1.0"
 dependencies = [
  "jisho-api",
  "jisho-format",
+ "jisho-lookup",
  "jisho-store",
  "jisho-testkit",
  "lexopt",
@@ -312,6 +313,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "jisho-format",
+ "jisho-lookup",
  "jisho-store",
  "jisho-testkit",
  "serde",

@@ -62,6 +62,25 @@ fn import_list_lookup_remove_round_trip() {
 }
 
 #[test]
+fn lookup_finds_inflected_forms_and_exact_does_not() {
+    let dir = TempDir::new("cli-scan");
+    let store = dir.path().join("store.sqlite");
+    let zip = dir.write("fixture.zip", &fixture::terms_dictionary("Fixture"));
+    assert!(jisho_in(&store, &["import", path(&zip)]).status.success());
+    let out = jisho_in(&store, &["lookup", "食べなかった"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.starts_with("食べる [たべる]  (Fixture)\n  from 食べなかった: negative < -た\n"),
+        "{text}"
+    );
+    // Romaji input is converted like Yomitan's alphabeticToHiragana.
+    assert!(stdout(&jisho_in(&store, &["lookup", "taberu"])).contains("食べる"));
+    let out = jisho_in(&store, &["lookup", "--exact", "食べなかった"]);
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
 fn json_output_matches_api_shapes() {
     let dir = TempDir::new("cli-json");
     let store = dir.path().join("store.sqlite");
@@ -70,8 +89,11 @@ fn json_output_matches_api_shapes() {
 
     let out = jisho_in(&store, &["lookup", "--json", "カタカナ"]);
     let body: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
-    assert_eq!(body["entries"][0]["reading"], "カタカナ");
-    assert_eq!(body["entries"][0]["glossary_text"][0], "katakana");
+    assert_eq!(body["entries"][0]["headwords"][0]["reading"], "カタカナ");
+    assert_eq!(
+        body["entries"][0]["definitions"][0]["glossary_text"][0],
+        "katakana"
+    );
     assert_eq!(body["matched"]["length"]["chars"], 4);
 
     let out = jisho_in(&store, &["list", "--json"]);
