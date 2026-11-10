@@ -7,6 +7,7 @@ pub mod import;
 pub mod kanji;
 pub mod list;
 pub mod lookup;
+pub mod parse;
 pub mod remove;
 pub mod serve;
 pub mod settings;

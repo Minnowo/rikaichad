@@ -67,12 +67,20 @@ impl HostPolicy {
 }
 
 /// Middleware: fails requests (including reading their body) that take
-/// longer than the configured time limit with `503 timeout`.
+/// longer than the configured time limit with `503 timeout`. Dictionary
+/// uploads and removals are exempt: they take as long as the dictionary
+/// needs (an upload stalls out on the idle timeout instead).
 pub async fn request_timeout(
     State(state): State<AppState>,
     request: Request,
     next: Next,
 ) -> Response {
+    let path = request.uri().path();
+    let long_write = (request.method() == Method::POST && path == "/v1/dictionaries")
+        || (request.method() == Method::DELETE && path.starts_with("/v1/dictionaries/"));
+    if long_write {
+        return next.run(request).await;
+    }
     match tokio::time::timeout(state.config.request_timeout, next.run(request)).await {
         Ok(response) => response,
         Err(_) => crate::state::timeout_error().into_response(),
@@ -127,7 +135,7 @@ pub async fn guard(State(state): State<AppState>, request: Request, next: Next) 
         let headers = preflight.headers_mut();
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, PUT, DELETE"),
+            HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE"),
         );
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,

@@ -11,6 +11,7 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jisho_format::{
@@ -74,7 +75,23 @@ impl Store {
         limits: &Limits,
         progress: &mut dyn FnMut(&ImportProgress),
     ) -> Result<ImportReport, StoreError> {
-        let source_sha256 = hash_file(path)?;
+        self.import_cancellable(path, limits, progress, &AtomicBool::new(false))
+    }
+
+    /// Like [`Store::import`], stopping with [`StoreError::Cancelled`] (and
+    /// writing nothing) soon after `cancel` is set: it is checked every
+    /// [`CANCEL_CHECK_ROWS`] rows.
+    pub fn import_cancellable(
+        &mut self,
+        path: &Path,
+        limits: &Limits,
+        progress: &mut dyn FnMut(&ImportProgress),
+        cancel: &AtomicBool,
+    ) -> Result<ImportReport, StoreError> {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(StoreError::Cancelled);
+        }
+        let source_sha256 = hash_file(path, cancel)?;
         let source_name = path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -151,8 +168,12 @@ impl Store {
                 rows: 0,
             },
             glossaries: GlossaryWriter::new(),
+            cancel,
         };
         for entry in &banks {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(StoreError::Cancelled);
+            }
             let warning = import_bank(&tx, &mut archive, entry, &mut state)?;
             warnings.extend(warning);
             state.progress.files_done += 1;
@@ -185,6 +206,10 @@ impl Store {
                 to_i64(counts.tags)
             ],
         )?;
+        // Last chance to cancel: after this the import is committed.
+        if cancel.load(Ordering::Relaxed) {
+            return Err(StoreError::Cancelled);
+        }
         tx.commit()?;
         // The import is committed; a checkpoint problem only means the WAL
         // file still holds part of it, which SQLite resolves later.
@@ -217,6 +242,21 @@ struct ImportState<'a> {
     counts: Counts,
     progress: ImportProgress,
     glossaries: GlossaryWriter,
+    cancel: &'a AtomicBool,
+}
+
+/// Rows between checks of an import's cancel flag.
+pub const CANCEL_CHECK_ROWS: u64 = 10_000;
+
+impl ImportState<'_> {
+    /// Fails with [`StoreError::Cancelled`] every [`CANCEL_CHECK_ROWS`] rows
+    /// once the cancel flag is set.
+    fn check_cancel(&self, row_index: u64) -> Result<(), StoreError> {
+        if row_index.is_multiple_of(CANCEL_CHECK_ROWS) && self.cancel.load(Ordering::Relaxed) {
+            return Err(StoreError::Cancelled);
+        }
+        Ok(())
+    }
 }
 
 fn import_bank(
@@ -306,6 +346,7 @@ fn import_terms(
                 .push(term_id, glossary_codec::encode(&glossary, &text))?;
             insert_glossaries(&mut insert_glossary, state.id, ready)?;
             row_index += 1;
+            state.check_cancel(row_index)?;
             Ok(())
         },
     )?;
@@ -348,6 +389,7 @@ fn import_term_meta(
                 .map_err(|m| invalid_row(entry, row_index, m))?;
             insert.execute(params![state.id, row.term, row.mode, row.data.to_string()])?;
             row_index += 1;
+            state.check_cancel(row_index)?;
             Ok(())
         },
     )?;
@@ -388,6 +430,7 @@ fn import_kanji(
                 stats
             ])?;
             row_index += 1;
+            state.check_cancel(row_index)?;
             Ok(())
         },
     )?;
@@ -419,6 +462,7 @@ fn import_kanji_meta(
                 row.data.to_string()
             ])?;
             row_index += 1;
+            state.check_cancel(row_index)?;
             Ok(())
         },
     )?;
@@ -442,6 +486,7 @@ fn import_tags(
                 .map_err(|m| invalid_row(entry, row_index, m))?;
             insert_tag(tx, state.id, &row)?;
             row_index += 1;
+            state.check_cancel(row_index)?;
             Ok(())
         },
     )?;
@@ -525,13 +570,38 @@ fn check_total_size(entries: &[EntryInfo], limits: &Limits) -> Result<(), StoreE
     Ok(())
 }
 
-fn hash_file(path: &Path) -> Result<String, StoreError> {
+/// The file's SHA-256, stopping with [`StoreError::Cancelled`] when
+/// `cancel` is set (hashing a large upload takes a while).
+fn hash_file(path: &Path, cancel: &AtomicBool) -> Result<String, StoreError> {
     let io_error = |source| StoreError::Io {
         context: format!("cannot read {}", path.display()),
         source,
     };
     let file = File::open(path).map_err(io_error)?;
-    sha256_hex(&mut BufReader::new(file)).map_err(io_error)
+    let mut reader = CancellableReader {
+        inner: BufReader::new(file),
+        cancel,
+    };
+    match sha256_hex(&mut reader) {
+        Ok(hash) => Ok(hash),
+        Err(_) if cancel.load(Ordering::Relaxed) => Err(StoreError::Cancelled),
+        Err(e) => Err(io_error(e)),
+    }
+}
+
+/// A reader that fails once the cancel flag is set.
+struct CancellableReader<'a, R> {
+    inner: R,
+    cancel: &'a AtomicBool,
+}
+
+impl<R: std::io::Read> std::io::Read for CancellableReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other("cancelled"));
+        }
+        self.inner.read(buf)
+    }
 }
 
 fn invalid_row(entry: &EntryInfo, row: u64, message: String) -> StoreError {

@@ -112,6 +112,7 @@ Ported Rust source files
   crates/jisho-ja/src/cjk.rs                 ext/js/language/CJK-util.js, ja/japanese.js
   crates/jisho-ja/src/cjk_languages.rs       ext/js/language/zh/chinese.js, ko/korean.js
   crates/jisho-ja/src/romaji.rs              ext/js/language/ja/japanese-wanakana.js
+  crates/jisho-ja/src/furigana.rs            ext/js/language/ja/japanese.js
   crates/jisho-ja/src/text_preprocessors.rs  ext/js/language/ja/japanese-text-preprocessors.js,
                                              CJK-util.js, language-descriptors.js
   crates/jisho-lookup/src/entry.rs           ext/js/language/translator.js
@@ -124,6 +125,7 @@ Ported Rust source files
   crates/jisho-lookup/src/meta.rs            ext/js/language/translator.js
   crates/jisho-lookup/src/kanji.rs           ext/js/language/translator.js
   crates/jisho-lookup/src/options.rs         ext/js/background/backend.js
+  crates/jisho-lookup/src/parse.rs           ext/js/background/backend.js
   crates/jisho-ja/tests/yomitan_transforms.rs
                                              test/fixtures/language-transformer-test.js,
                                              test/language/japanese-transforms.test.js

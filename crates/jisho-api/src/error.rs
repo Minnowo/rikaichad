@@ -69,6 +69,7 @@ impl From<StoreError> for ApiError {
             }
             StoreError::ReadOnly => ApiError::new(StatusCode::FORBIDDEN, "read_only", message),
             StoreError::Invalid { .. } => ApiError::bad_request(message),
+            StoreError::Cancelled => ApiError::new(StatusCode::CONFLICT, "cancelled", message),
             StoreError::Interrupted => crate::state::timeout_error(),
             StoreError::Format(_) | StoreError::InvalidRow { .. } => ApiError::new(
                 StatusCode::UNPROCESSABLE_ENTITY,

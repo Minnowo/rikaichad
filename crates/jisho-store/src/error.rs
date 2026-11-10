@@ -37,6 +37,8 @@ pub enum StoreError {
     Interrupted,
     /// An argument is invalid (e.g. a dictionary listed twice).
     Invalid { message: String },
+    /// The import was cancelled; nothing was written.
+    Cancelled,
     /// Stored data cannot be read back (e.g. a damaged glossary).
     Corrupt { message: String },
 }
@@ -73,6 +75,7 @@ impl fmt::Display for StoreError {
             StoreError::ReadOnly => write!(f, "the store is open read-only"),
             StoreError::Interrupted => write!(f, "the query took too long and was stopped"),
             StoreError::Invalid { message } => write!(f, "{message}"),
+            StoreError::Cancelled => write!(f, "cancelled; nothing was imported"),
             StoreError::Corrupt { message } => write!(f, "damaged store: {message}"),
         }
     }

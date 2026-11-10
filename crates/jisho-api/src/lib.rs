@@ -11,6 +11,7 @@ mod dictionary_json;
 mod error;
 mod guard;
 mod handlers;
+mod jobs;
 mod json_body;
 mod listener;
 mod lookup_json;
@@ -28,8 +29,9 @@ pub use error::ApiError;
 pub use lookup_json::{
     DEFAULT_LIMIT, DEFAULT_SCAN_LENGTH, DefinitionJson, FrequencyJson, HeadwordJson,
     InflectionChainJson, KanjiEntryJson, KanjiLookupResponse, LookupMode, LookupRequest,
-    LookupResponse, MAX_SCAN_LENGTH, MatchedJson, PronunciationItemJson, PronunciationJson,
-    TagJson, TermEntryJson, run_kanji_lookup, run_lookup,
+    LookupResponse, MAX_SCAN_LENGTH, MatchedJson, ParseResponse, ParseTokenJson,
+    PronunciationItemJson, PronunciationJson, TagJson, TermEntryJson, run_kanji_lookup, run_lookup,
+    run_parse,
 };
 pub use server::{ServerError, router, run};
 pub use text_length::TextLength;

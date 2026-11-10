@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! Embeds the commit the binary is built from, for `GET /v1/source`
+//! (AGPL-3.0 section 13, docs/brief.md): JISHO_GIT_COMMIT and
+//! JISHO_GIT_DIRTY from git, or from the environment when building outside
+//! a checkout (e.g. a source tarball); "unknown" otherwise. JISHO_SOURCE_URL
+//! passes through as the default repository URL.
+//!
+//! Only a git checkout whose top level is this workspace counts (not a
+//! repository the source happens to sit in). Dirty means any change git
+//! sees, untracked files included. The script reruns whenever the
+//! workspace's sources or the checked-out commit change, so the values
+//! cannot go stale.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn git(root: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn main() {
+    for name in ["JISHO_GIT_COMMIT", "JISHO_GIT_DIRTY", "JISHO_SOURCE_URL"] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
+    let root = manifest.join("../..");
+    let root = root.canonicalize().unwrap_or(root);
+    for watched in ["crates", "Cargo.toml", "Cargo.lock", "scripts", "docs"] {
+        println!("cargo:rerun-if-changed={}", root.join(watched).display());
+    }
+    let toplevel = git(&root, &["rev-parse", "--show-toplevel"])
+        .map(PathBuf::from)
+        .and_then(|p| p.canonicalize().ok());
+    let in_checkout = toplevel.as_deref() == Some(root.as_path());
+    if in_checkout {
+        // HEAD may live in a worktree's git dir, branch refs in the common
+        // dir.
+        for (flag, files) in [
+            ("--git-dir", &["HEAD", "index"][..]),
+            ("--git-common-dir", &["packed-refs"][..]),
+        ] {
+            if let Some(dir) = git(&root, &["rev-parse", "--path-format=absolute", flag]) {
+                for file in files {
+                    println!("cargo:rerun-if-changed={dir}/{file}");
+                }
+                if flag == "--git-common-dir"
+                    && let Some(head) = git(&root, &["symbolic-ref", "-q", "HEAD"])
+                {
+                    println!("cargo:rerun-if-changed={dir}/{head}");
+                }
+            }
+        }
+    }
+    let from_git = |args: &[&str]| if in_checkout { git(&root, args) } else { None };
+    let commit = std::env::var("JISHO_GIT_COMMIT")
+        .ok()
+        .or_else(|| from_git(&["rev-parse", "HEAD"]))
+        .unwrap_or_else(|| "unknown".to_string());
+    let dirty = std::env::var("JISHO_GIT_DIRTY")
+        .ok()
+        .or_else(|| from_git(&["status", "--porcelain"]).map(|s| (!s.is_empty()).to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let url = std::env::var("JISHO_SOURCE_URL").unwrap_or_default();
+    println!("cargo:rustc-env=JISHO_GIT_COMMIT={commit}");
+    println!("cargo:rustc-env=JISHO_GIT_DIRTY={dirty}");
+    println!("cargo:rustc-env=JISHO_SOURCE_URL={url}");
+}

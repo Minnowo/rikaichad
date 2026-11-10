@@ -18,5 +18,5 @@ Intl.Collator as in a browser):
     JISHO_EXPORT_STORE=$PWD/md.sqlite JISHO_EXPORT_OUT=$PWD/md-rows.jsonl \
         cargo test --release -p jisho-store --test export_oracle -- --ignored
     node scripts/port/yomitan-oracle.mjs <ynode> md-rows.jsonl \
-        tests/fixtures/parity/merge-deinflection-texts.txt split,group,merge,term,simple \
+        tests/fixtures/parity/merge-deinflection-texts.txt split,group,merge,term,simple,parse \
         > tests/fixtures/parity/merge-deinflection-yomitan.jsonl

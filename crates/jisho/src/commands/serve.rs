@@ -23,6 +23,11 @@ Options:
   --allow-origin URL   Let web pages from this origin call the API (CORS);
                        repeatable, e.g. --allow-origin http://localhost:5173
   --allow-host NAME    Also accept this Host header name; repeatable
+  --max-upload SIZE    Largest dictionary upload, e.g. 500M or 4G (default
+                       4G)
+  --source-url URL     Where this server's source code is published, shown
+                       by GET /v1/source (AGPL-3.0: set this if you serve
+                       a modified version to others)
 ";
 
 pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliError> {
@@ -43,6 +48,15 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
             Long("read-only") => config.read_only = true,
             Long("allow-origin") => config.allowed_origins.push(parser.value()?.string()?),
             Long("allow-host") => config.allowed_hosts.push(parser.value()?.string()?),
+            Long("max-upload") => {
+                let value = parser.value()?.string()?;
+                config.max_upload_bytes = parse_size(&value).ok_or_else(|| {
+                    CliError::new(format!(
+                        "--max-upload: {value:?} is not a size like 500M or 4G"
+                    ))
+                })?;
+            }
+            Long("source-url") => config.source_url = Some(parser.value()?.string()?),
             Short('h') | Long("help") => {
                 out(USAGE)?;
                 return Ok(ExitCode::SUCCESS);
@@ -63,4 +77,35 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     })
     .map_err(|e| CliError::new(e.to_string()))?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// `123`, `500K`, `500M`, `4G` (powers of 1024) as bytes.
+fn parse_size(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let (digits, factor) = match text.chars().last()?.to_ascii_uppercase() {
+        'K' => (text.get(..text.len() - 1)?, 1u64 << 10),
+        'M' => (text.get(..text.len() - 1)?, 1 << 20),
+        'G' => (text.get(..text.len() - 1)?, 1 << 30),
+        _ => (text, 1),
+    };
+    digits
+        .parse::<u64>()
+        .ok()?
+        .checked_mul(factor)
+        .filter(|n| *n > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_size;
+
+    #[test]
+    fn sizes() {
+        assert_eq!(parse_size("500M"), Some(500 << 20));
+        assert_eq!(parse_size("4g"), Some(4 << 30));
+        assert_eq!(parse_size("123"), Some(123));
+        assert_eq!(parse_size("0"), None);
+        assert_eq!(parse_size("x"), None);
+        assert_eq!(parse_size(""), None);
+    }
 }

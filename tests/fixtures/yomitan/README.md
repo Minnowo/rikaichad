@@ -10,3 +10,4 @@ the parity oracle for jisho's port.
 | translator-test-inputs.json     | test/data/translator-test-inputs.json                       |
 | translator-test-results.json    | test/data/translator-test-results.json                      |
 | valid-dictionary1/              | test/data/dictionaries/valid-dictionary1                     |
+| furigana-golden.json            | Output of ext/js/language/ja/japanese.js distributeFurigana and distributeFuriganaInflected on generated inputs (scripts/port/dump-furigana-golden.mjs) |

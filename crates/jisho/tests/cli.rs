@@ -299,3 +299,17 @@ fn kanji_and_settings_commands() {
         "B"
     );
 }
+
+#[test]
+fn parse_splits_words_with_readings() {
+    let dir = TempDir::new("cli-parse");
+    let store = dir.path().join("store.sqlite");
+    let zip = dir.write("fixture.zip", &fixture::terms_dictionary("Fixture"));
+    assert!(jisho_in(&store, &["import", path(&zip)]).status.success());
+    let out = jisho_in(&store, &["parse", "ご飯を食べなかった。"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "ご飯[はん] を 食[た]べなかった 。\n");
+    let out = jisho_in(&store, &["parse", "--json", "ご飯"]);
+    let body: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(body["tokens"][0]["headwords"][0][0]["term"], "ご飯");
+}

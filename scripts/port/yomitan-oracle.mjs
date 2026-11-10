@@ -26,6 +26,7 @@ import {pathToFileURL} from 'node:url';
 
 const [ynode, rowsPath, textsPath, modesArg] = process.argv.slice(2);
 const {Translator} = await import(pathToFileURL(join(ynode, 'ext/js/language/translator.js')).href);
+const japanese = await import(pathToFileURL(join(ynode, 'ext/js/language/ja/japanese.js')).href);
 const rows = {terms: [], termMeta: [], kanji: [], kanjiMeta: [], tagMeta: []};
 for await (const line of createInterface({input: createReadStream(rowsPath, 'utf8'), crlfDelay: Infinity})) {
     if (line.length === 0) { continue; }
@@ -200,10 +201,65 @@ function compactKanji(e) {
     ];
 }
 
+// backend.js _textParseScanning (the Backend class needs a browser), with
+// the scan length and simple-mode options it uses; only the parts that
+// produce output.
+async function parseScanning(text, scanLength) {
+    const options = termOptions('simple');
+    const results = [];
+    let previousUngroupedSegment = null;
+    let i = 0;
+    const ii = text.length;
+    while (i < ii) {
+        const codePoint = text.codePointAt(i);
+        const character = String.fromCodePoint(codePoint);
+        const substring = text.substring(i, i + scanLength);
+        const {dictionaryEntries, originalTextLength} = await translator.findTerms('simple', substring, options);
+        const textSegments = [];
+        if (dictionaryEntries.length > 0 && originalTextLength > 0 && (originalTextLength !== character.length || japanese.isCodePointJapanese(codePoint))) {
+            const {headwords: [{term, reading}]} = dictionaryEntries[0];
+            const source = substring.substring(0, originalTextLength);
+            for (const {text: text2, reading: reading2} of japanese.distributeFuriganaInflected(term, reading, source)) {
+                textSegments.push({text: text2, reading: reading2});
+            }
+            if (textSegments.length > 0) {
+                const token = textSegments.map((s) => s.text).join('');
+                const trimmedHeadwords = [];
+                for (const dictionaryEntry of dictionaryEntries) {
+                    const validHeadwords = [];
+                    for (const headword of dictionaryEntry.headwords) {
+                        const validSources = headword.sources.filter((src) => src.originalText === token && src.isPrimary && src.matchType === 'exact');
+                        if (validSources.length > 0) { validHeadwords.push([headword.term, headword.reading]); }
+                    }
+                    if (validHeadwords.length > 0) { trimmedHeadwords.push(validHeadwords); }
+                }
+                textSegments[0].headwords = trimmedHeadwords;
+            }
+        }
+        if (textSegments.length > 0) {
+            previousUngroupedSegment = null;
+            results.push(textSegments);
+            i += originalTextLength;
+        } else {
+            if (previousUngroupedSegment === null) {
+                previousUngroupedSegment = {text: character, reading: ''};
+                results.push([previousUngroupedSegment]);
+            } else {
+                previousUngroupedSegment.text += character;
+            }
+            i += character.length;
+        }
+    }
+    // Compact: per token, its [text, reading] segments and headwords.
+    return results.map((segments) => [segments.map((s) => [s.text, s.reading]), segments[0].headwords ?? []]);
+}
+
 console.warn = () => {};
 for (const mode of modes) {
     for (const text of texts) {
-        if (mode === 'kanji') {
+        if (mode === 'parse') {
+            process.stdout.write(JSON.stringify({mode, text, tokens: await parseScanning(text, 16)}) + '\n');
+        } else if (mode === 'kanji') {
             const entries = await translator.findKanji(text, {enabledDictionaryMap: enabledDictionaryMap(), removeNonJapaneseCharacters: false});
             process.stdout.write(JSON.stringify({mode, text, kanji: entries.map(compactKanji)}) + '\n');
         } else {

@@ -5,7 +5,7 @@
 
 use jisho_lookup::{
     EnabledDictionaries, FindTermsOptions, KanjiEntry, PronunciationKind, ResultMode, Tag,
-    TermEntry, find_kanji, find_terms, load_raw_glossaries,
+    TermEntry, find_kanji, find_terms, load_raw_glossaries, parse_text,
 };
 use jisho_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
@@ -543,4 +543,73 @@ fn utf16_prefix(text: &str, units: usize) -> &str {
         used += c.len_utf16();
     }
     text
+}
+
+/// Response of a text parse.
+#[derive(Debug, Clone, Serialize)]
+pub struct ParseResponse {
+    pub tokens: Vec<ParseTokenJson>,
+}
+
+/// One token: a word the lookup matched, or a run of unmatched text.
+#[derive(Debug, Clone, Serialize)]
+pub struct ParseTokenJson {
+    pub text: String,
+    /// The text in pieces with their readings (empty reading: read as
+    /// written).
+    pub segments: Vec<FuriganaJson>,
+    /// Headwords whose lookup matched exactly this token, grouped per
+    /// result entry in result order; empty for unmatched text.
+    pub headwords: Vec<Vec<ParsedHeadwordJson>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FuriganaJson {
+    pub text: String,
+    pub reading: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ParsedHeadwordJson {
+    pub term: String,
+    pub reading: String,
+}
+
+/// Parses `text` with Yomitan's scanning parser, looking up `scan_length`
+/// UTF-16 units from each position.
+pub fn run_parse(
+    store: &Store,
+    text: &str,
+    scan_length: usize,
+) -> Result<ParseResponse, StoreError> {
+    let dictionaries = EnabledDictionaries::from_store(store)?;
+    let tokens = parse_text(store, text, &dictionaries, scan_length)?;
+    Ok(ParseResponse {
+        tokens: tokens
+            .into_iter()
+            .map(|token| ParseTokenJson {
+                text: token.text(),
+                segments: token
+                    .segments
+                    .into_iter()
+                    .map(|s| FuriganaJson {
+                        text: s.text,
+                        reading: s.reading,
+                    })
+                    .collect(),
+                headwords: token
+                    .headwords
+                    .into_iter()
+                    .map(|list| {
+                        list.into_iter()
+                            .map(|h| ParsedHeadwordJson {
+                                term: h.term,
+                                reading: h.reading,
+                            })
+                            .collect()
+                    })
+                    .collect(),
+            })
+            .collect(),
+    })
 }

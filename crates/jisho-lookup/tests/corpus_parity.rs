@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use jisho_format::Limits;
 use jisho_lookup::{
     EnabledDictionaries, FindTermsOptions, KanjiEntry, PronunciationKind, ResultMode, Tag,
-    TermEntry, find_kanji, find_terms, load_glossaries,
+    TermEntry, find_kanji, find_terms, load_glossaries, parse_text,
 };
 use jisho_store::Store;
 use jisho_testkit::{Method, TempDir, ZipBuilder};
@@ -62,7 +62,10 @@ fn crafted_dictionary_matches_yomitan() {
         for limit in [None, Some(1), Some(2)] {
             let actual = compact_lookup(&store, &dictionaries, mode, text, limit);
             let mut expected = expected.clone();
-            if let (Some(limit), Some(entries)) = (limit, expected["entries"].as_array_mut()) {
+            if let (Some(limit), Some(entries)) = (
+                limit,
+                expected.get_mut("entries").and_then(Value::as_array_mut),
+            ) {
                 entries.truncate(limit);
             }
             assert_eq!(
@@ -73,7 +76,7 @@ fn crafted_dictionary_matches_yomitan() {
         }
         compared += 1;
     }
-    assert_eq!(compared, 45);
+    assert_eq!(compared, 54);
 }
 
 /// The public corpus (scripts/fetch-corpus.sh) against Yomitan's results
@@ -176,6 +179,28 @@ fn compact_lookup(
     text: &str,
     limit: Option<usize>,
 ) -> Value {
+    if mode == "parse" {
+        let tokens = parse_text(store, text, dictionaries, 16).unwrap();
+        let tokens: Vec<Value> = tokens
+            .iter()
+            .map(|t| {
+                json!([
+                    t.segments
+                        .iter()
+                        .map(|s| json!([s.text, s.reading]))
+                        .collect::<Vec<_>>(),
+                    t.headwords
+                        .iter()
+                        .map(|list| list
+                            .iter()
+                            .map(|h| json!([h.term, h.reading]))
+                            .collect::<Vec<_>>())
+                        .collect::<Vec<_>>(),
+                ])
+            })
+            .collect();
+        return json!({"mode": mode, "text": text, "tokens": tokens});
+    }
     if mode == "kanji" {
         let entries = find_kanji(store, text, dictionaries, false).unwrap();
         return json!({"mode": mode, "text": text, "kanji": entries.iter().map(compact_kanji).collect::<Vec<_>>()});

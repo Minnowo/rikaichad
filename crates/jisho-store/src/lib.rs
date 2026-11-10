@@ -22,7 +22,7 @@ mod store;
 
 pub use error::StoreError;
 pub use glossary_codec::RawGlossary;
-pub use import::{ImportProgress, ImportReport};
+pub use import::{CANCEL_CHECK_ROWS, ImportProgress, ImportReport};
 pub use metadata::{KanjiHit, KanjiMetaHit, TagRecord, TermMetaHit};
 pub use records::{BulkHit, Counts, DictionaryInfo, MatchSource, TermHit, TermRecord};
 pub use schema::STORE_VERSION;

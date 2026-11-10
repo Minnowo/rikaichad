@@ -24,9 +24,23 @@ pub struct AppState {
     /// a burst of requests queues instead of opening connections and
     /// blocking threads without bound.
     pub store_permits: Arc<Semaphore>,
+    /// Import jobs and the single write slot.
+    pub jobs: Arc<crate::jobs::Jobs>,
 }
 
 impl AppState {
+    /// `403 read_only` when the server runs with `--read-only`.
+    pub fn require_writable(&self) -> Result<(), ApiError> {
+        if self.config.read_only {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "read_only",
+                "server is running with --read-only",
+            ));
+        }
+        Ok(())
+    }
+
     /// Runs `f` with a store connection on the blocking thread pool.
     ///
     /// Waits for a free slot (at most [`crate::store_pool::MAX_IDLE`] tasks

@@ -16,6 +16,7 @@ mod grouping;
 mod kanji;
 mod meta;
 mod options;
+mod parse;
 mod sort;
 mod tags;
 mod text_variants;
@@ -29,4 +30,5 @@ pub use entry::{
 pub use find_terms::{find_terms, load_glossaries, load_raw_glossaries};
 pub use kanji::find_kanji;
 pub use options::{DictionaryOptions, EnabledDictionaries, FindTermsOptions, ResultMode};
+pub use parse::{ParsedHeadword, ParsedToken, parse_text};
 pub use utf16::utf16_len;

@@ -35,8 +35,9 @@ Every error response has this body:
 | 403  | `forbidden_host`          | `Host` header not allowed (DNS rebinding guard)       |
 | 404  | `not_found`               | Unknown path, dictionary or job                       |
 | 405  | `method_not_allowed`      | Wrong method for the path                             |
+| 408  | `timeout`                 | An upload stopped sending data or is too slow         |
 | 409  | `conflict`                | Dictionary title already imported                     |
-| 409  | `busy`                    | Another import is running (one at a time)             |
+| 409  | `busy`                    | Another import, removal or settings change is running (one write at a time) |
 | 413  | `payload_too_large`       | Body over its cap                                     |
 | 415  | `unsupported_media_type`  | Wrong `Content-Type`                                  |
 | 422  | `invalid_dictionary`      | The zip is not a valid dictionary                     |
@@ -51,8 +52,11 @@ Every error response has this body:
 | Lookup `text`                   | 1000 chars | `400`                         |
 | Results per lookup (`limit`)    | 32, max 1000 | Extra results dropped, `truncated: true` |
 | Response body                   | 16 MiB  | Results dropped from the end, `truncated: true` |
-| Request time                    | 10 s    | `503 timeout`                    |
+| Request time                    | 10 s (not for uploads and removals) | `503 timeout` |
 | Dictionary upload               | 4 GiB (`--max-upload`) | `413`             |
+| Upload with no data arriving    | 27 s (just under the 30 s connection idle limit) | `408 timeout` |
+| Upload slower than 64 KiB/s on average, after 60 s | - | `408 timeout`   |
+| Parse `text`                    | 1000 chars | `400`                         |
 
 ### Browser access
 
@@ -76,7 +80,10 @@ Every error response has this body:
 | POST   | `/v1/text/parse`             | 4         | no      |
 | POST   | `/v1/dictionaries`           | 4         | yes     |
 | DELETE | `/v1/dictionaries/{id}`      | 4         | yes     |
+| PATCH  | `/v1/dictionaries/{id}`      | 4         | yes     |
 | PUT    | `/v1/dictionaries/order`     | 4         | yes     |
+| GET    | `/v1/settings`               | 4         | no      |
+| PATCH  | `/v1/settings`               | 4         | yes     |
 | GET    | `/v1/jobs/{id}`              | 4         | no      |
 | DELETE | `/v1/jobs/{id}`              | 4         | yes     |
 | GET    | `/v1/source`                 | 4         | no      |
@@ -308,7 +315,137 @@ numbers, as Yomitan's settings page does; removing that dictionary clears
 it (Yomitan keeps the stale name), so the next sequenced import takes its
 place.
 
-### Milestone 4 endpoints
+### POST /v1/text/parse
 
-Specified when their milestone starts; their rows above fix the paths and
-whether they mutate.
+Splits a text into words with Yomitan's scanning parser: from each
+position, the longest match of a lookup (`"simple"` result mode) is one
+token, with furigana; characters nothing matches form tokens of their
+own. One lookup per token, so `text` is capped at 1000 characters.
+
+Request: `{"text": "...", "scan_length": 16}`. `scan_length` (default 16,
+1 to 32) is how far each lookup reads, in UTF-16 units as in Yomitan.
+
+```json
+{
+  "tokens": [
+    {
+      "text": "\u98df\u3079\u305f",
+      "segments": [{"text": "\u98df", "reading": "\u305f"}, {"text": "\u3079\u305f", "reading": ""}],
+      "headwords": [[{"term": "\u98df\u3079\u308b", "reading": "\u305f\u3079\u308b"}]]
+    },
+    {"text": "\u3002", "segments": [{"text": "\u3002", "reading": ""}], "headwords": []}
+  ]
+}
+```
+
+- `segments` split the token for furigana; an empty `reading` means the
+  piece is read as written.
+- `headwords` are those whose lookup matched exactly this token, grouped
+  per result entry in result order; empty for unmatched text.
+
+### POST /v1/dictionaries
+
+Uploads a dictionary zip and imports it in the background.
+
+- Body: the zip, `Content-Type: application/zip`. The optional query
+  parameter `filename` (e.g. `?filename=JMdict.zip`) is recorded as the
+  source file name (a base name; `upload.zip` if missing).
+- The upload is saved next to the store file, so the store's disk needs
+  room for it, and deleted after the import.
+- One write runs at a time (an import or removal, or a dictionary or
+  settings change): otherwise `409 busy`, before the body is read. The
+  upload holds the slot while it is being received.
+- Not subject to the 10 s request limit; it fails with `408 timeout` if no
+  data arrives for 27 s or it averages under 64 KiB/s after its first
+  minute, and `413` past `--max-upload`.
+- Stopping the server (Ctrl-C) cancels a running import; it rolls back.
+- Response `202 Accepted`, `Location: /v1/jobs/{id}`, body `{"job": ...}`
+  as for `GET /v1/jobs/{id}`.
+
+### GET /v1/jobs/{id}
+
+```json
+{
+  "job": {
+    "id": 1,
+    "kind": "import",
+    "state": "succeeded",
+    "source_name": "JMdict.zip",
+    "progress": {"files_done": 12, "files_total": 12, "rows": 527699},
+    "created_at": "2026-11-10T12:00:00Z",
+    "finished_at": "2026-11-10T12:00:13Z",
+    "dictionary": {"id": 3, "title": "JMdict", "...": "as in GET /v1/dictionaries"},
+    "warnings": [],
+    "error": null
+  }
+}
+```
+
+- `state`: `running`, `succeeded` (`dictionary` set), `failed` (`error`
+  has the `code` and `message` the error envelope would carry, e.g.
+  `conflict` for a title already imported, `invalid_dictionary`) or
+  `cancelled`.
+- `progress` is updated after each bank file.
+- The 32 most recent finished jobs are kept; jobs are lost when the
+  server restarts (the import itself is either committed or not).
+
+### DELETE /v1/jobs/{id}
+
+A running job is cancelled (`202`, `state` still `running`; it ends as
+`cancelled` within about 10,000 rows and nothing is imported, unless the
+import was already committing, in which case it ends `succeeded`). A
+finished job is forgotten (`200`). Either way the body is `{"job": ...}` as
+it was.
+
+### DELETE /v1/dictionaries/{id}
+
+Removes the dictionary and all its entries; `200`
+`{"removed": <dictionary as in GET /v1/dictionaries>}`. Takes the write
+slot like an import (`409 busy` while one runs) and is not subject to the
+10 s request limit: removing a large dictionary takes a while.
+
+### PATCH /v1/dictionaries/{id}
+
+Changes how lookups use a dictionary. Every field is optional; only the
+given ones change.
+
+```json
+{"enabled": false, "alias": "JM", "allow_secondary_searches": true,
+ "parts_of_speech_filter": true, "use_deinflections": true}
+```
+
+`"alias": null` goes back to the title. The change is one transaction.
+Response: the dictionary as in `GET /v1/dictionaries`. Like the other
+writes below, `409 busy` while an import or removal runs. An id that is
+not a number is `400`.
+
+### PUT /v1/dictionaries/order
+
+`{"ids": [3, 1]}` puts these dictionaries first, in this order; the others
+keep their order after them. An unknown id is `404`, a repeated one `400`.
+Response: as `GET /v1/dictionaries`.
+
+### GET /v1/settings, PATCH /v1/settings
+
+```json
+{"main_dictionary": "JMdict", "sort_frequency_dictionary": null, "sort_frequency_order": "descending"}
+```
+
+`PATCH` takes the same fields, all optional; a dictionary given as `null`
+clears the setting, a title that is not imported is `400`. Response: the
+settings.
+
+### GET /v1/source
+
+Where to get the source of this server (AGPL-3.0 section 13):
+
+```json
+{"name": "jisho", "version": "0.1.0", "license": "AGPL-3.0-or-later AND GPL-3.0-or-later",
+ "repository": "https://...", "commit": "80747dc...", "dirty": "false"}
+```
+
+`commit` is the git commit the binary was built from (`"unknown"`
+outside a checkout unless `JISHO_GIT_COMMIT` is set at build time);
+`dirty` says whether the build had uncommitted changes. `repository` is
+`--source-url`, or `JISHO_SOURCE_URL` at build time, or null. Anyone who
+runs a modified jisho for others must publish their source and set it.

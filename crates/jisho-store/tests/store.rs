@@ -639,3 +639,30 @@ fn metadata_queries_follow_indexeddb_order() {
     assert_eq!(exact.len(), 1);
     assert_eq!(exact[0].1.term, "y");
 }
+
+#[test]
+fn cancelled_import_writes_nothing() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let dir = TempDir::new("store-cancel");
+    let mut store = open(&dir);
+    let path = dir.write("a.zip", &fixture::terms_dictionary("A"));
+    let cancel = AtomicBool::new(false);
+    // Cancel after the first bank file.
+    let err = store
+        .import_cancellable(
+            &path,
+            &Limits::default(),
+            &mut |_| cancel.store(true, Ordering::Relaxed),
+            &cancel,
+        )
+        .unwrap_err();
+    assert!(matches!(err, StoreError::Cancelled), "{err}");
+    assert!(store.dictionaries().unwrap().is_empty());
+    assert_eq!(store.check_integrity().unwrap(), Vec::<String>::new());
+    // Not cancelled: imports normally.
+    cancel.store(false, Ordering::Relaxed);
+    store
+        .import_cancellable(&path, &Limits::default(), &mut |_| {}, &cancel)
+        .unwrap();
+    assert_eq!(store.dictionaries().unwrap().len(), 1);
+}

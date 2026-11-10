@@ -10,6 +10,7 @@
 mod cjk;
 mod cjk_languages;
 mod data;
+mod furigana;
 mod kana;
 mod kanji_variants;
 mod romaji;
@@ -18,6 +19,7 @@ mod transformer;
 
 pub use cjk::{normalize_cjk_compatibility_characters, normalize_radicals};
 pub use cjk_languages::{is_code_point_chinese, is_code_point_korean};
+pub use furigana::{FuriganaSegment, distribute_furigana, distribute_furigana_inflected};
 pub use kana::{
     collapse_emphatic_sequences, convert_alphanumeric_to_full_width,
     convert_full_width_alphanumeric_to_normal, convert_half_width_kana_to_full_width,

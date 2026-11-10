@@ -152,6 +152,36 @@ impl Store {
         found(changed, id)
     }
 
+    /// Replaces the settings of dictionary `id` and, if given, its enable
+    /// flag, in one transaction.
+    pub fn update_dictionary(
+        &mut self,
+        id: i64,
+        settings: &DictionarySettings,
+        enabled: Option<bool>,
+    ) -> Result<(), StoreError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let changed = tx.execute(
+            "UPDATE dictionaries SET alias = ?2, allow_secondary_searches = ?3,
+                 parts_of_speech_filter = ?4, use_deinflections = ?5,
+                 enabled = COALESCE(?6, enabled)
+             WHERE id = ?1",
+            params![
+                id,
+                settings.alias,
+                settings.allow_secondary_searches,
+                settings.parts_of_speech_filter,
+                settings.use_deinflections,
+                enabled
+            ],
+        )?;
+        found(changed, id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Puts the dictionaries `ids` first, in that order; the others follow
     /// in their current order. Fails if an id is unknown or repeated.
     pub fn set_order(&mut self, ids: &[i64]) -> Result<(), StoreError> {

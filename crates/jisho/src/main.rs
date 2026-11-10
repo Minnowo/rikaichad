@@ -28,6 +28,7 @@ Commands:
   remove <DICT>     Remove a dictionary
   lookup <TEXT>     Look up a word
   kanji <TEXT>      Look up kanji
+  parse <TEXT>      Split a sentence into words with readings
   dictionary <DICT> Show or change one dictionary's lookup settings
   order <DICT>...   Change the dictionary order
   settings          Show or change store-wide lookup settings
@@ -93,6 +94,7 @@ fn run() -> Result<ExitCode, CliError> {
                     "remove" => commands::remove::run(&mut parser, &ctx),
                     "lookup" => commands::lookup::run(&mut parser, &ctx),
                     "kanji" => commands::kanji::run(&mut parser, &ctx),
+                    "parse" => commands::parse::run(&mut parser, &ctx),
                     "dictionary" => commands::dictionary_settings::run(&mut parser, &ctx),
                     "order" => commands::dictionary_settings::run_order(&mut parser, &ctx),
                     "settings" => commands::settings::run(&mut parser, &ctx),

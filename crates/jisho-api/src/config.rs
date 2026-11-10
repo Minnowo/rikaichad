@@ -32,6 +32,11 @@ pub struct ServeConfig {
     pub max_json_body: usize,
     /// Cap on serialized result entries per response, in bytes.
     pub max_response_bytes: usize,
+    /// Cap on dictionary uploads, in bytes.
+    pub max_upload_bytes: u64,
+    /// Where the source of this build is (`GET /v1/source`); defaults to
+    /// the JISHO_SOURCE_URL given at build time.
+    pub source_url: Option<String>,
 }
 
 impl ServeConfig {
@@ -48,6 +53,8 @@ impl ServeConfig {
             idle_timeout: Duration::from_secs(30),
             max_json_body: 64 * 1024,
             max_response_bytes: 16 * 1024 * 1024,
+            max_upload_bytes: 4 * 1024 * 1024 * 1024,
+            source_url: Some(env!("JISHO_SOURCE_URL").to_string()).filter(|u| !u.is_empty()),
         }
     }
 
