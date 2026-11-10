@@ -10,6 +10,8 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
 pub mod fixture;
+mod temp_dir;
 mod zip_builder;
 
+pub use temp_dir::TempDir;
 pub use zip_builder::{Method, ZipBuilder, ZipEntry};

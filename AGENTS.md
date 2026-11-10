@@ -259,6 +259,11 @@ lint:    cargo clippy --workspace --all-targets -- -D warnings
 run:     cargo run -p jisho -- <command>
 ```
 
+Run `scripts/check.sh` on its own and act on its exit status. Never pipe
+it into `grep`/`tail` in the same command as a commit: the pipe hides the
+failure (this let a failing check and a stray `__pycache__` file into a
+commit once).
+
 ### Language notes
 
 - Rust edition 2024. Errors: one error enum per crate, implementing

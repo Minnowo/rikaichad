@@ -35,7 +35,7 @@ pub fn terms_dictionary(title: &str) -> Vec<u8> {
             ),
             (
                 "term_bank_2.json",
-                r#"[["ご飯","ごはん","n",null,5,["cooked rice","meal"],102,"P"],["カタカナ","","n","",0,["katakana"],103,""]]"#,
+                r#"[["ご飯","ごはん",null,"",5,["cooked rice","meal"],102,"P"],["カタカナ","","n","",0,["katakana"],103,""]]"#,
             ),
             (
                 "tag_bank_1.json",

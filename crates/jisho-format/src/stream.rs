@@ -21,15 +21,16 @@ const UTF8_BOM: &[u8] = b"\xef\xbb\xbf";
 ///
 /// Returns the number of rows. Stops at the first error: invalid JSON, a
 /// row that does not deserialize as `T` (the message names the row and
-/// field), trailing data after the array, or an error returned by
-/// `on_row`, which is passed through unchanged.
-pub fn stream_rows<T, F>(reader: &mut dyn Read, name: &str, on_row: F) -> Result<u64, FormatError>
+/// field) or trailing data after the array (all as `E::from(FormatError)`),
+/// or an error returned by `on_row`, which is passed through unchanged.
+pub fn stream_rows<T, E, F>(reader: &mut dyn Read, name: &str, on_row: F) -> Result<u64, E>
 where
     T: DeserializeOwned,
-    F: FnMut(T) -> Result<(), FormatError>,
+    E: From<FormatError>,
+    F: FnMut(T) -> Result<(), E>,
 {
     let mut buffered = BufReader::with_capacity(BUFFER_BYTES, reader);
-    skip_bom(&mut buffered).map_err(|e| json_error(name, &e.to_string()))?;
+    skip_bom(&mut buffered).map_err(|e| E::from(json_error(name, &e.to_string())))?;
     let mut deserializer = serde_json::Deserializer::from_reader(buffered);
     let mut aborted = None;
     let visitor = RowsVisitor {
@@ -41,25 +42,28 @@ where
     if let Some(err) = aborted {
         return Err(err);
     }
-    let count = result.map_err(|e| json_error(name, &e.to_string()))?;
-    deserializer
-        .end()
-        .map_err(|e| json_error(name, &format!("data after the top-level array: {e}")))?;
+    let count = result.map_err(|e| E::from(json_error(name, &e.to_string())))?;
+    deserializer.end().map_err(|e| {
+        E::from(json_error(
+            name,
+            &format!("data after the top-level array: {e}"),
+        ))
+    })?;
     Ok(count)
 }
 
-struct RowsVisitor<'a, T, F> {
+struct RowsVisitor<'a, T, E, F> {
     on_row: F,
     /// Set when `on_row` fails, so its error survives the trip through
     /// serde's error type.
-    aborted: &'a mut Option<FormatError>,
+    aborted: &'a mut Option<E>,
     marker: std::marker::PhantomData<T>,
 }
 
-impl<'de, T, F> Visitor<'de> for RowsVisitor<'_, T, F>
+impl<'de, T, E, F> Visitor<'de> for RowsVisitor<'_, T, E, F>
 where
     T: DeserializeOwned,
-    F: FnMut(T) -> Result<(), FormatError>,
+    F: FnMut(T) -> Result<(), E>,
 {
     type Value = u64;
 
@@ -107,10 +111,14 @@ mod tests {
     fn collect(text: &[u8]) -> Result<Vec<TagRow>, FormatError> {
         let mut rows = Vec::new();
         let mut reader: &[u8] = text;
-        stream_rows(&mut reader, "tag_bank_1.json", |row: TagRow| {
-            rows.push(row);
-            Ok(())
-        })?;
+        stream_rows(
+            &mut reader,
+            "tag_bank_1.json",
+            |row: TagRow| -> Result<(), FormatError> {
+                rows.push(row);
+                Ok(())
+            },
+        )?;
         Ok(rows)
     }
 
@@ -142,9 +150,11 @@ mod tests {
     #[test]
     fn handler_error_is_passed_through() {
         let mut reader: &[u8] = br#"[["a","c",0,"",0]]"#;
-        let err = stream_rows(&mut reader, "t", |_row: TagRow| {
-            Err(FormatError::MissingIndex)
-        })
+        let err = stream_rows(
+            &mut reader,
+            "t",
+            |_row: TagRow| -> Result<(), FormatError> { Err(FormatError::MissingIndex) },
+        )
         .unwrap_err();
         assert!(matches!(err, FormatError::MissingIndex));
     }

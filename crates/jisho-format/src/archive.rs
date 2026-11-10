@@ -137,23 +137,28 @@ impl<R: Read + Seek> Archive<R> {
     ///
     /// Errors: encrypted entries, compression other than stored/deflate,
     /// declared size over `max_bytes`, data longer or shorter than declared,
-    /// I/O errors, and any error from `f`.
-    pub fn read_entry<T>(
+    /// I/O errors (all as `E::from(FormatError)`), and any error from `f`,
+    /// passed through unchanged.
+    pub fn read_entry<T, E: From<FormatError>>(
         &mut self,
         entry: &EntryInfo,
         max_bytes: u64,
-        f: impl FnOnce(&mut dyn Read) -> Result<T, FormatError>,
-    ) -> Result<(T, Option<Warning>), FormatError> {
+        f: impl FnOnce(&mut dyn Read) -> Result<T, E>,
+    ) -> Result<(T, Option<Warning>), E> {
         if entry.size > max_bytes {
             return Err(FormatError::Limit {
                 what: format!("uncompressed size of {}", entry.name),
                 limit: max_bytes,
                 actual: entry.size,
-            });
+            }
+            .into());
         }
-        let raw = self.zip.by_index_raw(entry.index)?;
+        let raw = self
+            .zip
+            .by_index_raw(entry.index)
+            .map_err(|e| E::from(FormatError::from(e)))?;
         if raw.encrypted() {
-            return Err(entry_error(entry, "encrypted entries are not supported"));
+            return Err(entry_error(entry, "encrypted entries are not supported").into());
         }
         let expected_crc = raw.crc32();
         let inflated: Box<dyn Read + '_> = match raw.compression() {
@@ -163,7 +168,8 @@ impl<R: Read + Seek> Archive<R> {
                 return Err(entry_error(
                     entry,
                     &format!("unsupported compression method {other:?}"),
-                ));
+                )
+                .into());
             }
         };
         let mut checked = CheckedReader {
@@ -172,7 +178,8 @@ impl<R: Read + Seek> Archive<R> {
             crc: Crc::new(),
         };
         let value = f(&mut checked)?;
-        io::copy(&mut checked, &mut io::sink()).map_err(|e| entry_error(entry, &e.to_string()))?;
+        io::copy(&mut checked, &mut io::sink())
+            .map_err(|e| E::from(entry_error(entry, &e.to_string())))?;
         let warning = if checked.crc.sum() == expected_crc {
             None
         } else {
@@ -195,7 +202,7 @@ impl<R: Read + Seek> Archive<R> {
         max_bytes: u64,
     ) -> Result<(String, Option<Warning>), FormatError> {
         let name = entry.name.clone();
-        self.read_entry(entry, max_bytes, |reader| {
+        self.read_entry(entry, max_bytes, |reader| -> Result<String, FormatError> {
             let mut text = String::new();
             reader
                 .read_to_string(&mut text)

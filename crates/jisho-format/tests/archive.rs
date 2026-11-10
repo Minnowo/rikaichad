@@ -45,11 +45,15 @@ fn parses_index_and_streams_term_rows() {
     let (rows, _) = archive
         .read_entry(&bank, 1 << 20, |reader| {
             let mut rows = Vec::new();
-            stream_rows(reader, &bank.name, |row: TermRow| {
-                rows.push(row);
-                Ok(())
-            })?;
-            Ok(rows)
+            stream_rows(
+                reader,
+                &bank.name,
+                |row: TermRow| -> Result<(), FormatError> {
+                    rows.push(row);
+                    Ok(())
+                },
+            )?;
+            Ok::<_, FormatError>(rows)
         })
         .unwrap();
     assert_eq!(rows.len(), 2);
@@ -110,7 +114,9 @@ fn declared_size_over_cap_is_rejected_before_reading() {
     zip.add("term_bank_1.json", b"[]").size_override = Some(u32::MAX);
     let mut archive = open(zip.finish());
     let entry = archive.entries()[0].clone();
-    let err = archive.read_entry(&entry, 1 << 20, |_| Ok(())).unwrap_err();
+    let err = archive
+        .read_entry(&entry, 1 << 20, |_| Ok::<(), FormatError>(()))
+        .unwrap_err();
     assert!(matches!(err, FormatError::Limit { .. }), "{err}");
 }
 
@@ -192,9 +198,11 @@ fn deeply_nested_structured_content_is_rejected_not_overflowed() {
         r#"[["a","a","","",0,[{{"type":"structured-content","content":{content}}}],0,""]]"#
     );
     let mut reader: &[u8] = bank.as_bytes();
-    let err = stream_rows(&mut reader, "term_bank_1.json", |_row: TermRow| Ok(()))
-        .unwrap_err()
-        .to_string();
+    let err = stream_rows(&mut reader, "term_bank_1.json", |_row: TermRow| {
+        Ok::<(), FormatError>(())
+    })
+    .unwrap_err()
+    .to_string();
     assert!(err.contains("recursion limit"), "{err}");
 }
 
