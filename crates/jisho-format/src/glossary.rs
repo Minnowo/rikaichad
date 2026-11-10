@@ -57,8 +57,33 @@ pub fn normalize_glossary(items: &mut [Value]) -> Result<(), String> {
         if let Some(value) = replacement {
             *item = value;
         }
+        canonicalize_numbers(item);
     }
     Ok(())
+}
+
+/// Writes integral numbers as integers (`1.0` becomes `1`), as JavaScript
+/// keeps them: Yomitan compares glossaries by `JSON.stringify`, where the
+/// two are the same.
+pub fn canonicalize_numbers(value: &mut Value) {
+    /// Largest integer a JavaScript number holds exactly.
+    const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
+    match value {
+        Value::Number(n) if n.is_f64() => {
+            if let Some(f) = n.as_f64()
+                && f.fract() == 0.0
+                && f.abs() <= MAX_SAFE
+            {
+                // In range, so the conversion is exact.
+                #[allow(clippy::cast_possible_truncation)]
+                let integer = f as i64;
+                *value = Value::from(integer);
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(canonicalize_numbers),
+        Value::Object(map) => map.values_mut().for_each(canonicalize_numbers),
+        _ => {}
+    }
 }
 
 fn validate_deinflection(parts: &[Value]) -> Result<(), String> {
@@ -72,6 +97,18 @@ fn validate_deinflection(parts: &[Value]) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn integral_numbers_become_integers() {
+        let mut items = vec![
+            json!({"type": "structured-content", "content": {"tag": "td", "colSpan": 1.0, "x": [2.5, -0.0, 3]}}),
+        ];
+        normalize_glossary(&mut items).unwrap();
+        assert_eq!(
+            serde_json::to_string(&items).unwrap(),
+            r#"[{"content":{"colSpan":1,"tag":"td","x":[2.5,0,3]},"type":"structured-content"}]"#
+        );
+    }
 
     #[test]
     fn flattens_text_items_and_keeps_others() {

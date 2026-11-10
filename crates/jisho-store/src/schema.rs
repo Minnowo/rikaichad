@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Store schema (version 1) and creation.
+//! Store schema (version 3), creation and migration.
 //!
-//! The store is private to jisho (brief section 5): when the version
-//! changes, users rebuild it with `jisho reimport --all` from their zips.
+//! The store is private to jisho (brief section 5). When a version change
+//! only adds columns, [`ensure`] migrates the store in place; otherwise the
+//! store has to be rebuilt from the user's zips.
 //! Tables mirror Yomitan's IndexedDB stores (terms, termMeta, kanji,
 //! kanjiMeta, tagMeta, dictionaries); media is not stored (text only).
 //! Row ids are assigned in import order, which Yomitan's merge mode sorts
@@ -26,8 +27,19 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use crate::error::StoreError;
 
 /// Schema version written by this build. 2: `terms.form_of` and
-/// `terms.content_count` (milestone 2).
-pub const STORE_VERSION: i64 = 2;
+/// `terms.content_count` (milestone 2). 3: per-dictionary lookup settings
+/// (`alias`, `allow_secondary_searches`, `parts_of_speech_filter`,
+/// `use_deinflections`) and settings in `meta` (milestone 3); kanji stats
+/// stored as `[[name, value], ...]` in source order.
+pub const STORE_VERSION: i64 = 3;
+
+/// Columns added in version 3, as `ALTER TABLE` clauses.
+const V3_DICTIONARY_COLUMNS: [&str; 4] = [
+    "alias TEXT",
+    "allow_secondary_searches INTEGER NOT NULL DEFAULT 0",
+    "parts_of_speech_filter INTEGER NOT NULL DEFAULT 1",
+    "use_deinflections INTEGER NOT NULL DEFAULT 1",
+];
 
 const CREATE: &str = "
 CREATE TABLE meta (
@@ -48,7 +60,11 @@ CREATE TABLE dictionaries (
     term_meta_count  INTEGER NOT NULL,
     kanji_count      INTEGER NOT NULL,
     kanji_meta_count INTEGER NOT NULL,
-    tag_count        INTEGER NOT NULL
+    tag_count        INTEGER NOT NULL,
+    alias            TEXT,
+    allow_secondary_searches INTEGER NOT NULL DEFAULT 0,
+    parts_of_speech_filter   INTEGER NOT NULL DEFAULT 1,
+    use_deinflections        INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE terms (
     id              INTEGER PRIMARY KEY,
@@ -131,18 +147,57 @@ pub fn ensure(conn: &mut Connection) -> Result<(), StoreError> {
         }
         tx.commit()?;
     }
-    let found: String = conn.query_row(
-        "SELECT value FROM meta WHERE key = 'store_version'",
-        [],
-        |row| row.get(0),
-    )?;
-    let found: i64 = found.parse().unwrap_or(i64::MAX);
-    if found != STORE_VERSION {
+    let found = stored_version(conn)?;
+    if found == 2 {
+        migrate_v2(conn)?;
+    } else if found != STORE_VERSION {
         return Err(StoreError::UnsupportedStoreVersion {
             found,
             supported: STORE_VERSION,
         });
     }
+    Ok(())
+}
+
+fn stored_version(conn: &Connection) -> Result<i64, StoreError> {
+    let found: String = conn.query_row(
+        "SELECT value FROM meta WHERE key = 'store_version'",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(found.parse().unwrap_or(i64::MAX))
+}
+
+/// Version 2 to 3: adds the dictionary settings columns and picks the main
+/// dictionary as imports would have (the first sequenced one imported). Runs in an IMMEDIATE transaction
+/// and checks the version again, so concurrent openers migrate once.
+fn migrate_v2(conn: &mut Connection) -> Result<(), StoreError> {
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if stored_version(&tx)? == 2 {
+        for column in V3_DICTIONARY_COLUMNS {
+            tx.execute_batch(&format!("ALTER TABLE dictionaries ADD COLUMN {column}"))?;
+        }
+        let main: Option<String> = tx
+            .query_row(
+                "SELECT title FROM dictionaries
+                 WHERE json_extract(index_json, '$.sequenced') = 1
+                 ORDER BY id LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(title) = main {
+            tx.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES ('main_dictionary', ?1)",
+                [title],
+            )?;
+        }
+        tx.execute(
+            "UPDATE meta SET value = ?1 WHERE key = 'store_version'",
+            [STORE_VERSION.to_string()],
+        )?;
+    }
+    tx.commit()?;
     Ok(())
 }
 

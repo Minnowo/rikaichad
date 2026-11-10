@@ -50,9 +50,12 @@ fn import_list_lookup_remove_round_trip() {
     let out = jisho_in(&store, &["lookup", "食べる"]);
     assert!(out.status.success());
     let text = stdout(&out);
-    assert!(text.starts_with("食べる [たべる]  (Fixture)"), "{text}");
-    assert!(text.contains("1. to eat"), "{text}");
-    assert!(text.contains("2. to consume"), "{text}");
+    assert!(text.starts_with("食べる [たべる] (P)\n"), "{text}");
+    assert!(text.contains("  frequency: 250 (Fixture)\n"), "{text}");
+    assert!(
+        text.contains("  [Fixture]\n  1. (v1 vt) to eat; to consume\n"),
+        "{text}"
+    );
 
     let out = jisho_in(&store, &["remove", "Fixture"]);
     assert!(out.status.success(), "{}", stderr(&out));
@@ -71,7 +74,7 @@ fn lookup_finds_inflected_forms_and_exact_does_not() {
     assert!(out.status.success(), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(
-        text.starts_with("食べる [たべる]  (Fixture)\n  from 食べなかった: negative < -た\n"),
+        text.starts_with("食べる [たべる] (P)\n  from 食べなかった: negative < -た\n"),
         "{text}"
     );
     // Romaji input is converted like Yomitan's alphabeticToHiragana.
@@ -211,4 +214,88 @@ fn stdout(out: &Output) -> String {
 
 fn stderr(out: &Output) -> String {
     String::from_utf8(out.stderr.clone()).unwrap()
+}
+
+#[test]
+fn kanji_and_settings_commands() {
+    let dir = TempDir::new("cli-settings");
+    let store = dir.path().join("store.sqlite");
+    for title in ["A", "B"] {
+        let zip = dir.write(&format!("{title}.zip"), &fixture::terms_dictionary(title));
+        assert!(jisho_in(&store, &["import", path(&zip)]).status.success());
+    }
+
+    let out = jisho_in(&store, &["kanji", "食べ"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.starts_with("食  (A)\n"), "{text}");
+    assert!(
+        text.contains("  on: ショク\n  kun: た.べる\n  1. eat\n"),
+        "{text}"
+    );
+    assert!(text.contains("  misc: stroke count: 9\n"), "{text}");
+    assert!(text.contains("  frequency: 328 (A)\n"), "{text}");
+    assert_eq!(jisho_in(&store, &["kanji", "x"]).status.code(), Some(1));
+
+    let out = jisho_in(&store, &["settings"]);
+    assert!(
+        stdout(&out).contains("main dictionary:       A\n"),
+        "{}",
+        stdout(&out)
+    );
+    let out = jisho_in(
+        &store,
+        &[
+            "settings",
+            "--sort-frequency",
+            "B",
+            "--sort-frequency-order",
+            "ascending",
+        ],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("sort frequency:        B\nsort frequency order:  ascending\n"));
+    let out = jisho_in(&store, &["settings", "--sort-frequency", "nope"]);
+    assert_eq!(out.status.code(), Some(2));
+
+    let out = jisho_in(&store, &["dictionary", "B", "--disable", "--alias", "Bee"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("  enabled:             no\n  alias:               Bee\n"));
+    let out = jisho_in(&store, &["dictionary", "B", "--pos-filter", "maybe"]);
+    assert_eq!(out.status.code(), Some(2));
+
+    let out = jisho_in(&store, &["order", "B", "A"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stdout(&out).starts_with("  1. B (id 2) (disabled)\n  2. A (id 1)\n"),
+        "{}",
+        stdout(&out)
+    );
+    let list = stdout(&jisho_in(&store, &["list"]));
+    assert!(list.contains("B (disabled) (sort frequency)"), "{list}");
+    assert!(list.contains("A (main)"), "{list}");
+
+    // Disabled B is not used; A's entry alone.
+    let out = jisho_in(&store, &["lookup", "--json", "食べる"]);
+    let body: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(
+        body["entries"][0]["definitions"].as_array().unwrap().len(),
+        1
+    );
+    // Split mode over both once B is enabled again.
+    assert!(
+        jisho_in(&store, &["dictionary", "2", "--enable"])
+            .status
+            .success()
+    );
+    let out = jisho_in(
+        &store,
+        &["lookup", "--json", "--result-mode", "split", "食べる"],
+    );
+    let body: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(body["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        body["entries"][0]["definitions"][0]["dictionary"]["title"],
+        "B"
+    );
 }

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Term lookup as used by `POST /v1/terms/lookup` and the CLI's `lookup`:
-//! running the lookup ([`run_lookup`]) and its JSON shape.
+//! Term and kanji lookup as used by `POST /v1/terms/lookup`,
+//! `POST /v1/kanji/lookup` and the CLI's `lookup` and `kanji`: running the
+//! lookup ([`run_lookup`], [`run_kanji_lookup`]) and its JSON shape.
 
 use jisho_format::glossary_item_text;
-use jisho_lookup::{EnabledDictionaries, FindTermsOptions, TermEntry, find_terms, load_glossaries};
+use jisho_lookup::{
+    EnabledDictionaries, FindTermsOptions, KanjiEntry, PronunciationKind, ResultMode, Tag,
+    TermEntry, find_kanji, find_terms, load_glossaries,
+};
 use jisho_store::{Store, StoreError};
 use serde::Serialize;
 use serde_json::Value;
@@ -29,6 +33,8 @@ pub enum LookupMode {
 pub struct LookupRequest {
     pub text: String,
     pub mode: LookupMode,
+    /// How entries are grouped (Yomitan's result mode; default "group").
+    pub result_mode: ResultMode,
     /// At most this many entries.
     pub limit: usize,
     /// Entries with this reading sort first; empty for none.
@@ -64,7 +70,8 @@ pub struct MatchedJson {
     pub length: TextLength,
 }
 
-/// One result: headwords, how they were reached, and their definitions.
+/// One result: headwords, how they were reached, their definitions and
+/// metadata.
 #[derive(Debug, Clone, Serialize)]
 pub struct TermEntryJson {
     pub headwords: Vec<HeadwordJson>,
@@ -81,6 +88,8 @@ pub struct TermEntryJson {
     pub is_primary: bool,
     /// UTF-16 length of the longest input prefix that reached this entry.
     pub max_original_text_length: usize,
+    pub frequencies: Vec<FrequencyJson>,
+    pub pronunciations: Vec<PronunciationJson>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,7 +97,7 @@ pub struct HeadwordJson {
     pub term: String,
     pub reading: String,
     pub sources: Vec<SourceJson>,
-    pub term_tags: Vec<String>,
+    pub tags: Vec<TagJson>,
     /// Part-of-speech ids from the dictionary (e.g. "v1").
     pub word_classes: Vec<String>,
 }
@@ -116,21 +125,80 @@ pub struct RuleJson {
     pub description: Option<String>,
 }
 
+/// An expanded tag (Yomitan's Tag).
+#[derive(Debug, Clone, Serialize)]
+pub struct TagJson {
+    pub name: String,
+    pub category: String,
+    pub order: f64,
+    pub score: f64,
+    /// The tag's notes from each dictionary that has some.
+    pub notes: Vec<String>,
+    /// Titles of the dictionaries the tag came from.
+    pub dictionaries: Vec<String>,
+    /// A part-of-speech tag repeating the previous definition's.
+    pub redundant: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DefinitionJson {
     pub dictionary: DictionaryRefJson,
+    /// Indexes into the entry's `headwords` this definition applies to.
+    pub headword_indices: Vec<usize>,
     /// Store row id.
     pub id: i64,
     pub score: f64,
     pub sequences: Vec<i64>,
-    pub definition_tags: Vec<String>,
+    pub is_primary: bool,
+    pub tags: Vec<TagJson>,
     /// Glossary items as imported (raw JSON).
     pub glossary: Vec<Value>,
     /// One plain-text rendering per `glossary` item.
     pub glossary_text: Vec<String>,
 }
 
-/// Which dictionary an entry came from.
+/// A frequency of one headword.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrequencyJson {
+    pub headword_index: usize,
+    pub dictionary: DictionaryRefJson,
+    /// The value; for a string frequency, the first number in it.
+    pub frequency: f64,
+    pub display_value: Option<String>,
+    /// `display_value` is the raw string `frequency` was parsed from.
+    pub display_value_parsed: bool,
+    /// The frequency applies to this headword's reading only.
+    pub has_reading: bool,
+    /// "rank-based" or "occurrence-based", from the dictionary.
+    pub frequency_mode: Option<String>,
+}
+
+/// Pronunciations of one headword from one dictionary.
+#[derive(Debug, Clone, Serialize)]
+pub struct PronunciationJson {
+    pub headword_index: usize,
+    pub dictionary: DictionaryRefJson,
+    pub items: Vec<PronunciationItemJson>,
+}
+
+/// A pitch accent or a phonetic transcription.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PronunciationItemJson {
+    PitchAccent {
+        /// Downstep position (number) or H/L pattern (string).
+        position: Value,
+        nasal_positions: Vec<Value>,
+        devoice_positions: Vec<Value>,
+        tags: Vec<TagJson>,
+    },
+    PhoneticTranscription {
+        ipa: String,
+        tags: Vec<TagJson>,
+    },
+}
+
+/// Which dictionary something came from.
 #[derive(Debug, Clone, Serialize)]
 pub struct DictionaryRefJson {
     pub id: i64,
@@ -142,8 +210,11 @@ pub struct DictionaryRefJson {
 pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupResponse, StoreError> {
     let dictionaries = EnabledDictionaries::from_store(store)?;
     let options = FindTermsOptions {
+        mode: request.result_mode,
         deinflect: request.mode == LookupMode::Scan,
         primary_reading: request.primary_reading.clone(),
+        // One more than asked, to tell whether there were more.
+        limit: Some(request.limit.saturating_add(1)),
         ..FindTermsOptions::default()
     };
     let text = match request.mode {
@@ -186,6 +257,20 @@ pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupRespon
     })
 }
 
+fn tags_json(tags: Vec<Tag>) -> Vec<TagJson> {
+    tags.into_iter()
+        .map(|t| TagJson {
+            name: t.name,
+            category: t.category,
+            order: t.order,
+            score: t.score,
+            notes: t.content,
+            dictionaries: t.dictionaries,
+            redundant: t.redundant,
+        })
+        .collect()
+}
+
 fn entry_json(entry: TermEntry) -> TermEntryJson {
     TermEntryJson {
         headwords: entry
@@ -206,7 +291,7 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
                         is_primary: s.is_primary,
                     })
                     .collect(),
-                term_tags: h.tags,
+                tags: tags_json(h.tags),
                 word_classes: h.word_classes,
             })
             .collect(),
@@ -218,10 +303,12 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
                     id: d.dictionary_id,
                     title: d.dictionary,
                 },
+                headword_indices: d.headword_indices,
                 id: d.id,
                 score: d.score,
                 sequences: d.sequences,
-                definition_tags: d.tags,
+                is_primary: d.is_primary,
+                tags: tags_json(d.tags),
                 glossary_text: d.entries.iter().map(glossary_item_text).collect(),
                 glossary: d.entries,
             })
@@ -246,6 +333,182 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
         dictionary_index: entry.dictionary_index,
         is_primary: entry.is_primary,
         max_original_text_length: entry.max_original_text_length,
+        frequencies: entry
+            .frequencies
+            .into_iter()
+            .map(|f| FrequencyJson {
+                headword_index: f.headword_index,
+                dictionary: DictionaryRefJson {
+                    id: f.dictionary_id,
+                    title: f.dictionary,
+                },
+                frequency: f.frequency,
+                display_value: f.display_value,
+                display_value_parsed: f.display_value_parsed,
+                has_reading: f.has_reading,
+                frequency_mode: f.frequency_mode,
+            })
+            .collect(),
+        pronunciations: entry
+            .pronunciations
+            .into_iter()
+            .map(|p| PronunciationJson {
+                headword_index: p.headword_index,
+                dictionary: DictionaryRefJson {
+                    id: p.dictionary_id,
+                    title: p.dictionary,
+                },
+                items: p
+                    .pronunciations
+                    .into_iter()
+                    .map(|item| match item.kind {
+                        PronunciationKind::PitchAccent {
+                            positions,
+                            nasal_positions,
+                            devoice_positions,
+                        } => PronunciationItemJson::PitchAccent {
+                            position: positions,
+                            nasal_positions,
+                            devoice_positions,
+                            tags: tags_json(item.tags),
+                        },
+                        PronunciationKind::PhoneticTranscription { ipa } => {
+                            PronunciationItemJson::PhoneticTranscription {
+                                ipa,
+                                tags: tags_json(item.tags),
+                            }
+                        }
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+/// Response of a kanji lookup.
+#[derive(Debug, Clone, Serialize)]
+pub struct KanjiLookupResponse {
+    pub entries: Vec<KanjiEntryJson>,
+    /// True when entries were dropped by `limit` or the size cap.
+    pub truncated: bool,
+}
+
+/// One kanji from one dictionary.
+#[derive(Debug, Clone, Serialize)]
+pub struct KanjiEntryJson {
+    pub character: String,
+    pub dictionary: DictionaryRefJson,
+    pub onyomi: Vec<String>,
+    pub kunyomi: Vec<String>,
+    pub tags: Vec<TagJson>,
+    /// Stats grouped by category, in the dictionary's order.
+    pub stats: Vec<KanjiStatGroupJson>,
+    pub meanings: Vec<String>,
+    pub frequencies: Vec<KanjiFrequencyJson>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KanjiStatGroupJson {
+    pub category: String,
+    pub stats: Vec<KanjiStatJson>,
+}
+
+/// A stat (e.g. stroke count), described by the dictionary's tag.
+#[derive(Debug, Clone, Serialize)]
+pub struct KanjiStatJson {
+    pub name: String,
+    pub category: String,
+    /// The tag's notes (e.g. "Stroke count").
+    pub notes: String,
+    pub order: f64,
+    pub score: f64,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KanjiFrequencyJson {
+    pub dictionary: DictionaryRefJson,
+    pub frequency: f64,
+    pub display_value: Option<String>,
+    pub display_value_parsed: bool,
+    pub frequency_mode: Option<String>,
+}
+
+/// Looks up each distinct character of `text` (Yomitan's findKanji), at
+/// most `limit` entries within `max_bytes` serialized.
+pub fn run_kanji_lookup(
+    store: &Store,
+    text: &str,
+    limit: usize,
+    max_bytes: usize,
+) -> Result<KanjiLookupResponse, StoreError> {
+    let dictionaries = EnabledDictionaries::from_store(store)?;
+    let mut entries = find_kanji(store, text, &dictionaries, false)?;
+    let mut truncated = entries.len() > limit;
+    entries.truncate(limit);
+    let budget = max_bytes.saturating_sub(ENVELOPE_ALLOWANCE);
+    let mut result = Vec::with_capacity(entries.len());
+    let mut used = 0usize;
+    for entry in entries {
+        let json = kanji_json(entry);
+        let size = serde_json::to_vec(&json).map_or(usize::MAX, |v| v.len());
+        if used.saturating_add(size) > budget {
+            truncated = true;
+            break;
+        }
+        used += size;
+        result.push(json);
+    }
+    Ok(KanjiLookupResponse {
+        entries: result,
+        truncated,
+    })
+}
+
+fn kanji_json(entry: KanjiEntry) -> KanjiEntryJson {
+    let dictionary = DictionaryRefJson {
+        id: entry.dictionary_id,
+        title: entry.dictionary,
+    };
+    KanjiEntryJson {
+        character: entry.character,
+        onyomi: entry.onyomi,
+        kunyomi: entry.kunyomi,
+        tags: tags_json(entry.tags),
+        stats: entry
+            .stats
+            .into_iter()
+            .map(|(category, stats)| KanjiStatGroupJson {
+                category,
+                stats: stats
+                    .into_iter()
+                    .map(|s| KanjiStatJson {
+                        name: s.name,
+                        category: s.category,
+                        notes: s.content,
+                        order: s.order,
+                        score: s.score,
+                        value: s.value,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        meanings: entry.definitions,
+        frequencies: entry
+            .frequencies
+            .into_iter()
+            .map(|f| KanjiFrequencyJson {
+                dictionary: DictionaryRefJson {
+                    id: f.dictionary_id,
+                    title: f.dictionary,
+                },
+                frequency: f.frequency,
+                display_value: f.display_value,
+                display_value_parsed: f.display_value_parsed,
+                frequency_mode: f.frequency_mode,
+            })
+            .collect(),
+        dictionary,
     }
 }
 

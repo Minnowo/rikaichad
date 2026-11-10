@@ -2,7 +2,7 @@
 //! JSON shape of dictionary listings (`GET /v1/dictionaries`, and the
 //! CLI's `list --json`).
 
-use jisho_store::DictionaryInfo;
+use jisho_store::{DictionaryInfo, LookupSettings};
 use serde::Serialize;
 
 use crate::timestamp::rfc3339_utc;
@@ -11,6 +11,29 @@ use crate::timestamp::rfc3339_utc;
 #[derive(Debug, Clone, Serialize)]
 pub struct DictionaryListResponse {
     pub dictionaries: Vec<DictionaryJson>,
+    pub lookup_settings: LookupSettingsJson,
+}
+
+/// Store-wide lookup settings (Yomitan's `general` options).
+#[derive(Debug, Clone, Serialize)]
+pub struct LookupSettingsJson {
+    /// Title of the dictionary whose sequence numbers group merge-mode
+    /// results.
+    pub main_dictionary: Option<String>,
+    /// Title of the dictionary whose frequencies order results.
+    pub sort_frequency_dictionary: Option<String>,
+    /// "ascending" or "descending".
+    pub sort_frequency_order: &'static str,
+}
+
+impl LookupSettingsJson {
+    pub fn from_settings(settings: LookupSettings) -> LookupSettingsJson {
+        LookupSettingsJson {
+            main_dictionary: settings.main_dictionary,
+            sort_frequency_dictionary: settings.sort_frequency_dictionary,
+            sort_frequency_order: settings.sort_frequency_order.as_str(),
+        }
+    }
 }
 
 /// One imported dictionary.
@@ -23,6 +46,15 @@ pub struct DictionaryJson {
     pub sequenced: bool,
     pub enabled: bool,
     pub priority: i64,
+    /// Display name in results; null means the title.
+    pub alias: Option<String>,
+    /// Merge mode also searches this dictionary for the main dictionary's
+    /// headwords.
+    pub allow_secondary_searches: bool,
+    /// Deinflections must fit the entry's part of speech.
+    pub parts_of_speech_filter: bool,
+    /// The dictionary's own deinflection references are followed.
+    pub use_deinflections: bool,
     pub author: Option<String>,
     pub url: Option<String>,
     pub description: Option<String>,
@@ -57,6 +89,10 @@ impl DictionaryJson {
             sequenced: index.sequenced,
             enabled: info.enabled,
             priority: info.priority,
+            alias: info.settings.alias,
+            allow_secondary_searches: info.settings.allow_secondary_searches,
+            parts_of_speech_filter: info.settings.parts_of_speech_filter,
+            use_deinflections: info.settings.use_deinflections,
             author: index.author,
             url: index.url,
             description: index.description,

@@ -31,17 +31,7 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         return Err(CliError::new(format!("no dictionary given\n\n{USAGE}")));
     };
     let mut store = super::open_store(ctx)?;
-    let (id, title) = match target.parse::<i64>() {
-        Ok(id) => {
-            let info = store
-                .dictionaries()?
-                .into_iter()
-                .find(|d| d.id == id)
-                .ok_or_else(|| CliError::new(format!("no dictionary with id {id}")))?;
-            (id, info.index.title)
-        }
-        Err(_) => (store.dictionary_by_title(&target)?.id, target),
-    };
+    let (id, title) = super::resolve_dictionary(&store, &target)?;
     store.remove(id)?;
     info(&format!("removed {title:?} (id {id})"));
     Ok(ExitCode::SUCCESS)

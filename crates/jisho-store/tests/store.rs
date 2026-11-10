@@ -6,7 +6,9 @@
 use std::time::{Duration, Instant};
 
 use jisho_format::Limits;
-use jisho_store::{Counts, MatchSource, Store, StoreError};
+use jisho_store::{
+    Counts, DictionarySettings, FrequencyOrder, LookupSettings, MatchSource, Store, StoreError,
+};
 use jisho_testkit::{TempDir, ZipBuilder, fixture};
 use serde_json::json;
 
@@ -24,7 +26,7 @@ fn imports_fixture_with_counts_styles_and_no_warnings() {
             term_meta: 2,
             kanji: 1,
             kanji_meta: 1,
-            tags: 2
+            tags: 3
         }
     );
     assert_eq!(store.check_integrity().unwrap(), Vec::<String>::new());
@@ -103,10 +105,10 @@ fn batched_find_then_glossaries_and_index_use() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let hits = store.find_terms(&texts, 100).unwrap();
+    let hits = store.find_terms(&texts, None, 100).unwrap();
     let terms: Vec<&str> = hits.iter().map(|r| r.term.as_str()).collect();
     assert_eq!(terms, ["食べる", "ご飯"]);
-    assert!(store.find_terms(&[], 100).unwrap().is_empty());
+    assert!(store.find_terms(&[], None, 100).unwrap().is_empty());
     let records = store.with_glossaries(hits).unwrap();
     assert_eq!(records[1].glossary, [json!("cooked rice"), json!("meal")]);
     let plan = store.explain_find_terms(3).unwrap().join("\n");
@@ -299,10 +301,10 @@ fn matching_is_capped_and_glossaries_respect_a_byte_budget() {
     import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
     import(&mut store, &dir, "b.zip", fixture::terms_dictionary("B")).unwrap();
     let texts = vec!["食べる".to_string(), "ご飯".to_string()];
-    assert_eq!(store.find_terms(&texts, 10).unwrap().len(), 4);
-    assert_eq!(store.find_terms(&texts, 3).unwrap().len(), 3);
+    assert_eq!(store.find_terms(&texts, None, 10).unwrap().len(), 4);
+    assert_eq!(store.find_terms(&texts, None, 3).unwrap().len(), 3);
 
-    let hits = store.find_terms(&texts, 10).unwrap();
+    let hits = store.find_terms(&texts, None, 10).unwrap();
     // Each fixture glossary here is about 20-30 bytes of JSON.
     let (records, truncated) = store.with_glossaries_within(hits.clone(), 40).unwrap();
     assert_eq!(records.len(), 1);
@@ -351,7 +353,7 @@ fn deinflection_references_are_kept_out_of_glossary_content() {
     );
     import(&mut store, &dir, "refs.zip", zip).unwrap();
     let hits = store
-        .find_terms(&["食べた".to_string(), "見た".to_string()], 10)
+        .find_terms(&["食べた".to_string(), "見た".to_string()], None, 10)
         .unwrap();
     assert_eq!(
         hits[0].form_of,
@@ -374,9 +376,9 @@ fn bulk_lookup_claims_rows_like_indexeddb() {
         "食べる".to_string(),
         "ご飯".to_string(),
     ];
-    let (bulk, truncated) = store.find_terms_bulk(&texts, 100).unwrap();
+    let (bulk, truncated) = store.find_terms_bulk(&texts, None, 100).unwrap();
     assert!(!truncated);
-    let (capped, truncated) = store.find_terms_bulk(&texts, 1).unwrap();
+    let (capped, truncated) = store.find_terms_bulk(&texts, None, 1).unwrap();
     assert_eq!(capped.len(), 1);
     assert!(truncated, "hitting the cap is reported");
     let claims: Vec<(&str, usize, MatchSource)> = bulk
@@ -427,4 +429,241 @@ fn store_from_another_schema_version_is_refused_with_advice() {
         err.to_string().contains("import your dictionaries again"),
         "{err}"
     );
+}
+
+#[test]
+fn version_2_store_is_migrated_in_place() {
+    let dir = TempDir::new("store-migrate");
+    let path = dir.path().join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    drop(store);
+    // Make it look like a version 2 store.
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    for column in [
+        "alias",
+        "allow_secondary_searches",
+        "parts_of_speech_filter",
+        "use_deinflections",
+    ] {
+        conn.execute_batch(&format!("ALTER TABLE dictionaries DROP COLUMN {column}"))
+            .unwrap();
+    }
+    conn.execute_batch(
+        "DELETE FROM meta WHERE key = 'main_dictionary';
+         UPDATE meta SET value = '2' WHERE key = 'store_version';",
+    )
+    .unwrap();
+    drop(conn);
+
+    let store = Store::open(&path).unwrap();
+    let dictionary = &store.lookup_dictionaries().unwrap()[0];
+    assert_eq!(dictionary.settings, DictionarySettings::default());
+    assert_eq!(
+        store.lookup_settings().unwrap().main_dictionary.as_deref(),
+        Some("A")
+    );
+    assert_eq!(
+        store
+            .find_terms(&["食べる".to_string()], None, 10)
+            .unwrap()
+            .len(),
+        1
+    );
+    drop(store);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let version: String = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'store_version'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(version, jisho_store::STORE_VERSION.to_string());
+}
+
+#[test]
+fn settings_order_and_enable_flags_persist() {
+    let dir = TempDir::new("store-settings");
+    let mut store = open(&dir);
+    for title in ["A", "B", "C"] {
+        import(
+            &mut store,
+            &dir,
+            &format!("{title}.zip"),
+            fixture::terms_dictionary(title),
+        )
+        .unwrap();
+    }
+    let ids: Vec<i64> = store
+        .lookup_dictionaries()
+        .unwrap()
+        .iter()
+        .map(|d| d.id)
+        .collect();
+    // The first sequenced dictionary imported becomes the main one.
+    assert_eq!(
+        store.lookup_settings().unwrap().main_dictionary.as_deref(),
+        Some("A")
+    );
+
+    store.set_order(&[ids[2], ids[0]]).unwrap();
+    store.set_enabled(ids[1], false).unwrap();
+    let settings = DictionarySettings {
+        alias: Some("Cee".to_string()),
+        allow_secondary_searches: true,
+        parts_of_speech_filter: false,
+        use_deinflections: false,
+    };
+    store.set_dictionary_settings(ids[2], &settings).unwrap();
+    store
+        .set_lookup_settings(&LookupSettings {
+            main_dictionary: Some("C".to_string()),
+            sort_frequency_dictionary: Some("B".to_string()),
+            sort_frequency_order: FrequencyOrder::Ascending,
+        })
+        .unwrap();
+    drop(store);
+
+    let mut store = open(&dir);
+    let dictionaries = store.lookup_dictionaries().unwrap();
+    let titles: Vec<&str> = dictionaries.iter().map(|d| d.title.as_str()).collect();
+    assert_eq!(titles, ["C", "A", "B"]);
+    assert!(!dictionaries[2].enabled);
+    assert_eq!(dictionaries[0].settings, settings);
+    let lookup = store.lookup_settings().unwrap();
+    assert_eq!(lookup.sort_frequency_order, FrequencyOrder::Ascending);
+    // Disabled dictionaries are not searched.
+    let hits = store.find_terms(&["食べる".to_string()], None, 10).unwrap();
+    assert_eq!(hits.len(), 2);
+    // ... unless named as the extra one (merge mode's main dictionary).
+    let hits = store
+        .find_terms(&["食べる".to_string()], Some(ids[1]), 10)
+        .unwrap();
+    assert_eq!(hits.len(), 3);
+
+    assert!(matches!(
+        store.set_order(&[ids[0], ids[0]]),
+        Err(StoreError::Invalid { .. })
+    ));
+    assert!(matches!(
+        store.set_order(&[999]),
+        Err(StoreError::NotFound { .. })
+    ));
+    assert!(matches!(
+        store.set_enabled(999, true),
+        Err(StoreError::NotFound { .. })
+    ));
+
+    // Removing the main or sort-frequency dictionary clears the setting.
+    store.remove(ids[2]).unwrap();
+    store.remove(ids[1]).unwrap();
+    let lookup = store.lookup_settings().unwrap();
+    assert_eq!(lookup.main_dictionary, None);
+    assert_eq!(lookup.sort_frequency_dictionary, None);
+}
+
+#[test]
+fn metadata_queries_follow_indexeddb_order() {
+    let dir = TempDir::new("store-metadata");
+    let mut store = open(&dir);
+    let zip = fixture::dictionary(
+        &fixture::index("M"),
+        &[
+            (
+                "term_meta_bank_1.json",
+                r#"[["b","freq",1],["a","freq",2],["b","freq",3],["c","freq",4]]"#,
+            ),
+            (
+                "tag_bank_1.json",
+                r#"[["t","one",1,"first",0],["t","two",2,"second",0],["u","",0,"",0]]"#,
+            ),
+            (
+                "kanji_bank_1.json",
+                r#"[["字","ジ","あざ","",["character"],{"z":"1","10":"2","a":"3","2":"4"}]]"#,
+            ),
+            (
+                "kanji_meta_bank_1.json",
+                r#"[["字","freq",5],["字","freq","6"]]"#,
+            ),
+            (
+                "term_bank_1.json",
+                r#"[["x","","","",0,["same"],1,""],["y","","","",0,["same"],1,""],["z","","","",0,["other"],1,""]]"#,
+            ),
+        ],
+    );
+    import(&mut store, &dir, "m.zip", zip).unwrap();
+    let id = store.lookup_dictionaries().unwrap()[0].id;
+
+    let metas = store
+        .find_term_meta(&["a".to_string(), "b".to_string()], &[id])
+        .unwrap();
+    let got: Vec<(usize, String, serde_json::Value)> = metas
+        .into_iter()
+        .map(|m| (m.index, m.term, m.data))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (0, "a".to_string(), json!(2)),
+            (1, "b".to_string(), json!(1)),
+            (1, "b".to_string(), json!(3)),
+        ]
+    );
+    assert!(
+        store
+            .find_term_meta(&["a".to_string()], &[id + 1])
+            .unwrap()
+            .is_empty()
+    );
+
+    // The first tag row with a name wins, as findTagMetaBulk.
+    let tags = store
+        .find_tags(&[
+            (id, "t".to_string()),
+            (id, "missing".to_string()),
+            (id, "u".to_string()),
+        ])
+        .unwrap();
+    assert_eq!(tags[0].as_ref().unwrap().category, "one");
+    assert!(tags[1].is_none());
+    assert_eq!(tags[2].as_ref().unwrap().category, "");
+
+    // Kanji stats in Object.entries order: integer keys first.
+    let kanji = store.find_kanji(&["字".to_string()], &[id]).unwrap();
+    let names: Vec<&str> = kanji[0].stats.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["2", "10", "z", "a"]);
+    assert_eq!(kanji[0].meanings, ["character"]);
+    let metas = store.find_kanji_meta(&["字".to_string()], &[id]).unwrap();
+    assert_eq!(metas.len(), 2);
+
+    // Same content, same hash; sizes come from the record headers.
+    let ids: Vec<i64> = store
+        .find_terms(
+            &["x".to_string(), "y".to_string(), "z".to_string()],
+            None,
+            10,
+        )
+        .unwrap()
+        .iter()
+        .map(|h| h.id)
+        .collect();
+    let sizes = store.glossary_sizes(&ids).unwrap();
+    assert_eq!(sizes[&ids[0]], r#"["same"]"#.len());
+    let items: Vec<(i64, bool)> = ids.iter().map(|&id| (id, false)).collect();
+    let hashes = store.glossary_content_hashes(&items).unwrap();
+    assert_eq!(hashes[&ids[0]], hashes[&ids[1]]);
+    assert_ne!(hashes[&ids[0]], hashes[&ids[2]]);
+    assert_eq!(
+        store.glossary_content(ids[1], false).unwrap(),
+        r#"["same"]"#
+    );
+
+    let by_sequence = store.find_terms_by_sequence(&[(1, id)]).unwrap();
+    assert_eq!(by_sequence.len(), 3);
+    let exact = store
+        .find_terms_exact(&[("y".to_string(), "y".to_string())], &[id])
+        .unwrap();
+    assert_eq!(exact.len(), 1);
+    assert_eq!(exact[0].1.term, "y");
 }

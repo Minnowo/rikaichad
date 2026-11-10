@@ -1,0 +1,9 @@
+[
+    ["読む", "freq", {"reading": "よむ", "frequency": 120}],
+    ["読む", "freq", 7],
+    ["讀む", "freq", "rare (9000)"],
+    ["本", "freq", {"reading": "ほん", "frequency": {"value": 30, "displayValue": "30th"}}],
+    ["本", "freq", {"reading": "もと", "frequency": 4000}],
+    ["読む", "pitch", {"reading": "よむ", "pitches": [{"position": 1, "tags": ["heiban", "x"]}, {"position": 0, "devoice": [2], "nasal": 1}]}],
+    ["本", "pitch", {"reading": "ほん", "pitches": [{"position": 1}]}]
+]

@@ -23,12 +23,13 @@ mod timestamp;
 
 pub use config::DEFAULT_BIND;
 pub use config::ServeConfig;
-pub use dictionary_json::{DictionaryJson, DictionaryListResponse};
+pub use dictionary_json::{DictionaryJson, DictionaryListResponse, LookupSettingsJson};
 pub use error::ApiError;
 pub use lookup_json::{
-    DEFAULT_LIMIT, DEFAULT_SCAN_LENGTH, DefinitionJson, HeadwordJson, InflectionChainJson,
-    LookupMode, LookupRequest, LookupResponse, MAX_SCAN_LENGTH, MatchedJson, TermEntryJson,
-    run_lookup,
+    DEFAULT_LIMIT, DEFAULT_SCAN_LENGTH, DefinitionJson, FrequencyJson, HeadwordJson,
+    InflectionChainJson, KanjiEntryJson, KanjiLookupResponse, LookupMode, LookupRequest,
+    LookupResponse, MAX_SCAN_LENGTH, MatchedJson, PronunciationItemJson, PronunciationJson,
+    TagJson, TermEntryJson, run_kanji_lookup, run_lookup,
 };
 pub use server::{ServerError, router, run};
 pub use text_length::TextLength;

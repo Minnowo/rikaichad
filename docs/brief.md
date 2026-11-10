@@ -402,6 +402,11 @@ collection p50 3.4-3.5 ms / p99 17.4-17.6 ms for a complete lookup with
 glossaries; public corpus p50 1.0 ms / p99 2.7 ms. Targets met. Details in
 docs/plan/milestone-2.md.
 
+Milestone 3 (grouping, metadata, kanji) measurements and the result-mode
+costs are in docs/plan/milestone-3.md: split mode meets the targets on the
+user's collection; group and merge full lookups return 10x more content
+and do not.
+
 Open: glossary compression (store is 65% of raw JSON) and import speed
 into a large existing store; neither is needed for the targets now.
 

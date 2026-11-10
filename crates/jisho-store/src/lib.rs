@@ -11,14 +11,18 @@ mod error;
 mod import;
 mod integrity;
 mod lookup;
+mod metadata;
 mod records;
 mod schema;
+mod settings;
 mod sha256;
 mod store;
 
 pub use error::StoreError;
 pub use import::{ImportProgress, ImportReport};
+pub use metadata::{KanjiHit, KanjiMetaHit, TagRecord, TermMetaHit};
 pub use records::{BulkHit, Counts, DictionaryInfo, MatchSource, TermHit, TermRecord};
 pub use schema::STORE_VERSION;
+pub use settings::{DictionarySettings, FrequencyOrder, LookupDictionary, LookupSettings};
 pub use sha256::sha256_hex;
 pub use store::Store;

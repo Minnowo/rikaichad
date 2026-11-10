@@ -35,6 +35,8 @@ pub enum StoreError {
     ReadOnly,
     /// The query passed the deadline set with `Store::set_deadline`.
     Interrupted,
+    /// An argument is invalid (e.g. a dictionary listed twice).
+    Invalid { message: String },
 }
 
 impl fmt::Display for StoreError {
@@ -68,6 +70,7 @@ impl fmt::Display for StoreError {
             ),
             StoreError::ReadOnly => write!(f, "the store is open read-only"),
             StoreError::Interrupted => write!(f, "the query took too long and was stopped"),
+            StoreError::Invalid { message } => write!(f, "{message}"),
         }
     }
 }

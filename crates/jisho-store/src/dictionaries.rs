@@ -6,6 +6,7 @@ use rusqlite::{Row, TransactionBehavior};
 
 use crate::error::StoreError;
 use crate::records::{Counts, DictionaryInfo};
+use crate::settings::DictionarySettings;
 use crate::store::Store;
 
 /// Tables whose rows belong to a dictionary, cleared on removal.
@@ -17,7 +18,8 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT id, priority, enabled, index_json, styles IS NOT NULL, source_name,
                     source_sha256, imported_at, term_count, term_meta_count, kanji_count,
-                    kanji_meta_count, tag_count
+                    kanji_meta_count, tag_count, alias, allow_secondary_searches,
+                    parts_of_speech_filter, use_deinflections
              FROM dictionaries ORDER BY priority, id",
         )?;
         let rows = stmt.query_map([], read_dictionary)?;
@@ -34,6 +36,7 @@ impl Store {
                 source_sha256: raw.source_sha256,
                 imported_at: raw.imported_at,
                 counts: raw.counts,
+                settings: raw.settings,
             });
         }
         Ok(result)
@@ -70,6 +73,14 @@ impl Store {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // Unlike Yomitan, which keeps a stale main dictionary until all
+        // dictionaries are deleted: clearing it lets the next sequenced
+        // import become the main dictionary.
+        tx.execute(
+            "DELETE FROM meta WHERE key IN ('main_dictionary', 'sort_frequency_dictionary')
+                 AND value = (SELECT title FROM dictionaries WHERE id = ?1)",
+            [id],
+        )?;
         let deleted = tx.execute("DELETE FROM dictionaries WHERE id = ?1", [id])?;
         if deleted == 0 {
             return Err(StoreError::NotFound {
@@ -103,6 +114,7 @@ struct RawDictionary {
     source_sha256: String,
     imported_at: i64,
     counts: Counts,
+    settings: DictionarySettings,
 }
 
 fn read_dictionary(row: &Row<'_>) -> rusqlite::Result<RawDictionary> {
@@ -125,6 +137,12 @@ fn read_dictionary(row: &Row<'_>) -> rusqlite::Result<RawDictionary> {
             kanji: count(10)?,
             kanji_meta: count(11)?,
             tags: count(12)?,
+        },
+        settings: DictionarySettings {
+            alias: row.get(13)?,
+            allow_secondary_searches: row.get(14)?,
+            parts_of_speech_filter: row.get(15)?,
+            use_deinflections: row.get(16)?,
         },
     })
 }

@@ -1,16 +1,18 @@
-// Ported from Yomitan ext/js/language/translator.js (findTerms for the
-// "split" mode, _findTermsInternal, _getDeinflections,
+// Ported from Yomitan ext/js/language/translator.js (findTerms,
+// _findTermsInternal, _getDeinflections,
 // _getDictionaryDeinflections, _addEntriesToDeinflections,
 // _groupDeinflectionsByTerm, _matchEntriesToDeinflections,
 // _getDictionaryEntries, _mergeInflectionRuleChains,
 // _mergeTextProcessorRuleChains, _areArraysEqualIgnoreOrder,
 // _getJapaneseChineseKoreanOnlyText,
-// _createTermDictionaryEntryFromDatabaseEntry, _addUserFacingInflections)
+// _createTermDictionaryEntryFromDatabaseEntry, _addUserFacingInflections,
+// _sortTermDictionaryEntryDefinitions, _sortTermDictionaryEntrySimpleData)
 // at ee81f8dcf13e985bb4d7961009fb49a764b4d924.
 // Copyright (C) 2023-2026  Yomitan Authors
 // Copyright (C) 2016-2022  Yomichan Authors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Term lookup: candidates -> matched dictionary rows -> entries, sorted.
+//! Term lookup: candidates -> matched dictionary rows -> entries, grouped
+//! by the result mode, sorted, with tags and metadata.
 
 use std::collections::{HashMap, HashSet};
 
@@ -18,7 +20,7 @@ use jisho_ja::{
     condition_flags_from_parts_of_speech, conditions_match, is_code_point_chinese,
     is_code_point_japanese, is_code_point_korean, user_facing_rule,
 };
-use jisho_store::{BulkHit, MatchSource, Store, StoreError};
+use jisho_store::{BulkHit, MatchSource, Store, StoreError, TermHit};
 
 use crate::deinflection::{
     ChainTables, Deinflection, algorithm_deinflections, identity_deinflection,
@@ -27,19 +29,24 @@ use crate::entry::{
     Definition, FindTermsResult, Headword, InflectionChain, InflectionSource, RuleName, Source,
     TermEntry,
 };
-use crate::options::{EnabledDictionaries, FindTermsOptions};
-use crate::sort::sort_term_entries;
+use crate::grouping::{group_by_headword, group_by_term, merge, remove_excluded_definitions};
+use crate::meta::{HeadwordOrder, MetaKinds, add_term_meta, update_sort_frequencies};
+use crate::options::{EnabledDictionaries, FindTermsOptions, ResultMode};
+use crate::sort::{sort_definitions, sort_simple_data, sort_term_entries};
+use crate::tags::{TagLookup, TagRegistry, flag_redundant_definition_tags};
 use crate::utf16::utf16_len;
 
 /// Finds the dictionary entries for the start of `text`, like Yomitan's
-/// findTerms in "split" mode (one headword and one definition per entry),
-/// sorted. Glossaries are not loaded; see [`load_glossaries`].
+/// findTerms in the result mode of `options`, sorted, at most
+/// `options.limit` of them. Glossaries are not loaded; see
+/// [`load_glossaries`].
 pub fn find_terms(
     store: &Store,
     text: &str,
     dictionaries: &EnabledDictionaries,
     options: &FindTermsOptions,
 ) -> Result<FindTermsResult, StoreError> {
+    let dictionaries = dictionaries.for_mode(options.mode);
     let text = if options.remove_non_japanese_characters {
         japanese_chinese_korean_prefix(text)
     } else {
@@ -52,22 +59,107 @@ pub fn find_terms(
             truncated: false,
         });
     }
+    let mut registry = TagRegistry::default();
     let mut tables = ChainTables::default();
     let mut truncated = false;
     let deinflections = deinflections(
         store,
         text,
-        dictionaries,
+        &dictionaries,
         options,
         &mut tables,
         &mut truncated,
     )?;
-    let (mut entries, original_text_length) =
-        dictionary_entries(deinflections, dictionaries, options, &mut tables);
+    let (entries, original_text_length) = dictionary_entries(
+        deinflections,
+        &dictionaries,
+        options,
+        &mut tables,
+        &mut registry,
+    );
+    let primary_reading = options.primary_reading.as_str();
+    let mut entries = match options.mode {
+        ResultMode::Group => group_by_headword(entries, primary_reading),
+        ResultMode::Term => group_by_term(entries, primary_reading),
+        ResultMode::Merge => merge(
+            store,
+            entries,
+            &dictionaries,
+            primary_reading,
+            &mut registry,
+        )?,
+        ResultMode::Split | ResultMode::Simple => entries,
+    };
+    if let Some(excluded) = dictionaries.excluded {
+        remove_excluded_definitions(&mut entries, excluded);
+    }
+
+    // Frequency orders first: they are the only metadata the sort uses.
+    // Tags and metadata do not affect the order otherwise, so they are
+    // computed only for the entries kept (same result as Yomitan computing
+    // them for all, then cutting at maxResults).
+    if let Some(sort_dictionary) = dictionaries.sort_frequency_dictionary {
+        if dictionaries.by_id.contains_key(&sort_dictionary) {
+            add_term_meta(
+                store,
+                &mut entries,
+                &dictionaries,
+                &[sort_dictionary],
+                MetaKinds::FrequenciesOnly,
+                None,
+                &mut registry,
+            )?;
+        }
+        update_sort_frequencies(
+            &mut entries,
+            sort_dictionary,
+            dictionaries.sort_frequency_order,
+        );
+        for entry in &mut entries {
+            entry.frequencies.clear();
+        }
+    }
+    let headword_order = HeadwordOrder::of(&entries);
     if entries.len() > 1 {
         sort_term_entries(&mut entries);
     }
+    if let Some(limit) = options.limit {
+        entries.truncate(limit);
+    }
+
+    if options.mode != ResultMode::Simple {
+        add_term_meta(
+            store,
+            &mut entries,
+            &dictionaries,
+            &dictionaries.ids(),
+            MetaKinds::All,
+            Some(&headword_order),
+            &mut registry,
+        )?;
+        expand_tags(store, &mut entries, &registry)?;
+    } else if let Some(sort_dictionary) = dictionaries.sort_frequency_dictionary
+        && dictionaries.by_id.contains_key(&sort_dictionary)
+    {
+        add_term_meta(
+            store,
+            &mut entries,
+            &dictionaries,
+            &[sort_dictionary],
+            MetaKinds::All,
+            Some(&headword_order),
+            &mut registry,
+        )?;
+    }
     for entry in &mut entries {
+        flag_redundant_definition_tags(&mut entry.definitions);
+        sort_definitions(&mut entry.definitions);
+        sort_simple_data(&mut entry.frequencies, |f| {
+            (f.headword_index, f.dictionary_index, f.index)
+        });
+        sort_simple_data(&mut entry.pronunciations, |p| {
+            (p.headword_index, p.dictionary_index, p.index)
+        });
         add_user_facing_inflections(entry);
     }
     Ok(FindTermsResult {
@@ -75,6 +167,41 @@ pub fn find_terms(
         original_text_length,
         truncated,
     })
+}
+
+/// _expandTagGroupsAndGroup for term entries: every tag group becomes tags.
+fn expand_tags(
+    store: &Store,
+    entries: &mut [TermEntry],
+    registry: &TagRegistry,
+) -> Result<(), StoreError> {
+    let groups = entries.iter().flat_map(|e| {
+        let headwords = e.headwords.iter().flat_map(|h| &h.tag_groups);
+        let definitions = e.definitions.iter().flat_map(|d| &d.tag_groups);
+        let pronunciations = e
+            .pronunciations
+            .iter()
+            .flat_map(|p| &p.pronunciations)
+            .flat_map(|p| &p.tag_groups);
+        headwords.chain(definitions).chain(pronunciations)
+    });
+    let lookup = TagLookup::load(store, groups)?;
+    for entry in entries {
+        for headword in &mut entry.headwords {
+            headword.tags = lookup.expand(registry, &headword.tag_groups);
+        }
+        for definition in &mut entry.definitions {
+            definition.tags = lookup.expand(registry, &definition.tag_groups);
+        }
+        for pronunciation in entry
+            .pronunciations
+            .iter_mut()
+            .flat_map(|p| &mut p.pronunciations)
+        {
+            pronunciation.tags = lookup.expand(registry, &pronunciation.tag_groups);
+        }
+    }
+    Ok(())
 }
 
 /// Loads the glossaries of the definitions in `entries`, dropping
@@ -92,14 +219,32 @@ pub fn load_glossaries(
         .flat_map(|e| e.definitions.iter().map(|d| d.id))
         .collect();
     let (mut glossaries, _) = store.glossaries_within(&ids, max_bytes)?;
+    // A row can back several entries in merge mode: the last use takes the
+    // glossary, earlier ones copy it.
+    let mut uses: HashMap<i64, usize> = HashMap::new();
+    for id in &ids {
+        *uses.entry(*id).or_insert(0) += 1;
+    }
     let mut filled = 0;
     for entry in entries.iter_mut() {
         let mut complete = true;
         for definition in &mut entry.definitions {
-            match glossaries.remove(&definition.id) {
+            let remaining = uses.get_mut(&definition.id).map_or(0, |n| {
+                *n = n.saturating_sub(1);
+                *n
+            });
+            let items = if remaining == 0 {
+                glossaries.remove(&definition.id)
+            } else {
+                glossaries.get(&definition.id).cloned()
+            };
+            match items {
                 Some(items) => {
-                    definition.entries =
-                        items.into_iter().filter(|item| !item.is_array()).collect();
+                    let raw = definition.raw_entries;
+                    definition.entries = items
+                        .into_iter()
+                        .filter(|item| raw || !item.is_array())
+                        .collect();
                 }
                 None => complete = false,
             }
@@ -235,7 +380,8 @@ fn add_entries(
     if terms.is_empty() {
         return Ok(false);
     }
-    let (rows, truncated) = store.find_terms_bulk(&terms, options.max_hits)?;
+    let (rows, truncated) =
+        store.find_terms_bulk(&terms, dictionaries.extra_searched(), options.max_hits)?;
     for bulk in rows {
         let filter = dictionaries
             .by_id
@@ -266,6 +412,7 @@ fn dictionary_entries(
     dictionaries: &EnabledDictionaries,
     options: &FindTermsOptions,
     tables: &mut ChainTables,
+    registry: &mut TagRegistry,
 ) -> (Vec<TermEntry>, usize) {
     let mut original_text_length = 0;
     // Each entry with the ids of the chain lists it shares.
@@ -280,7 +427,7 @@ fn dictionary_entries(
         for row in &deinflection.entries {
             let id = row.hit.id;
             if !ids.contains(&id) {
-                let entry = create_entry(row, &deinflection, dictionaries, options);
+                let entry = create_entry(row, &deinflection, dictionaries, options, registry);
                 entries.push((entry, shared.0, shared.1));
                 ids.insert(id);
                 continue;
@@ -311,7 +458,7 @@ fn dictionary_entries(
                 // transformed text here; kept as is for parity.
                 if deinflection.original_text != existing_transformed {
                     *existing = (
-                        create_entry(row, &deinflection, dictionaries, options),
+                        create_entry(row, &deinflection, dictionaries, options, registry),
                         shared.0,
                         shared.1,
                     );
@@ -340,51 +487,94 @@ fn create_entry(
     deinflection: &Deinflection,
     dictionaries: &EnabledDictionaries,
     options: &FindTermsOptions,
+    registry: &mut TagRegistry,
 ) -> TermEntry {
-    let hit = &row.hit;
+    let match_source = match row.match_source {
+        MatchSource::Term => "term",
+        MatchSource::Reading => "reading",
+    };
+    entry_from_hit(
+        &row.hit,
+        match_source,
+        (
+            &deinflection.original_text,
+            &deinflection.transformed_text,
+            &deinflection.deinflected_text,
+        ),
+        true,
+        dictionaries,
+        &options.primary_reading,
+        registry,
+    )
+}
+
+/// _createTermDictionaryEntryFromDatabaseEntry: a one-headword,
+/// one-definition entry for a matched row, reached through `texts`
+/// (original, transformed, deinflected). Rule chains are left empty for the
+/// caller. Entries that are not primary (merge mode's related entries) keep
+/// deinflection references in their glossary, as in Yomitan.
+pub(crate) fn entry_from_hit(
+    hit: &TermHit,
+    match_source: &'static str,
+    texts: (&str, &str, &str),
+    is_primary: bool,
+    dictionaries: &EnabledDictionaries,
+    primary_reading: &str,
+    registry: &mut TagRegistry,
+) -> TermEntry {
+    let (original_text, transformed_text, deinflected_text) = texts;
     let reading = if hit.reading.is_empty() {
         hit.term.clone()
     } else {
         hit.reading.clone()
     };
-    let dictionary = dictionaries.by_id.get(&hit.dictionary_id);
-    let dictionary_index = dictionary.map_or(0, |d| d.index);
-    let dictionary_alias =
-        dictionary.map_or_else(|| hit.dictionary_title.clone(), |d| d.alias.clone());
-    let match_primary_reading =
-        !options.primary_reading.is_empty() && reading == options.primary_reading;
-    let source_term_exact_match_count = u32::from(deinflection.deinflected_text == hit.term);
+    let dictionary_index = dictionaries.index_of(hit.dictionary_id);
+    let dictionary_alias = dictionaries.alias_of(hit.dictionary_id, &hit.dictionary_title);
+    let match_primary_reading = !primary_reading.is_empty() && reading == primary_reading;
+    let source_term_exact_match_count = u32::from(is_primary && deinflected_text == hit.term);
     let sequence = if hit.sequence >= 0 { hit.sequence } else { -1 };
     let source = Source {
-        original_text: deinflection.original_text.clone(),
-        transformed_text: deinflection.transformed_text.clone(),
-        deinflected_text: deinflection.deinflected_text.clone(),
+        original_text: original_text.to_string(),
+        transformed_text: transformed_text.to_string(),
+        deinflected_text: deinflected_text.to_string(),
         match_type: "exact",
-        match_source: match row.match_source {
-            MatchSource::Term => "term",
-            MatchSource::Reading => "reading",
-        },
-        is_primary: true,
+        match_source,
+        is_primary,
     };
+    let mut headword_tags = Vec::new();
+    let mut definition_tags = Vec::new();
+    registry.add(
+        &mut headword_tags,
+        hit.dictionary_id,
+        &hit.dictionary_title,
+        &hit.term_tags,
+    );
+    registry.add(
+        &mut definition_tags,
+        hit.dictionary_id,
+        &hit.dictionary_title,
+        &hit.definition_tags,
+    );
     TermEntry {
-        is_primary: true,
+        is_primary,
         // Filled from the shared chain lists once all merges are done.
         text_processor_rule_chain_candidates: Vec::new(),
         inflection_rule_chain_candidates: Vec::new(),
         score: hit.score,
-        frequency_order: 0,
+        frequency_order: 0.0,
         dictionary_index,
         dictionary_alias: dictionary_alias.clone(),
         source_term_exact_match_count,
         match_primary_reading,
-        max_original_text_length: utf16_len(&deinflection.original_text),
+        max_original_text_length: utf16_len(original_text),
         headwords: vec![Headword {
             index: 0,
             headword_index: 0,
             term: hit.term.clone(),
             reading,
             sources: vec![source],
-            tags: hit.term_tags.clone(),
+            tags: Vec::new(),
+            tag_groups: headword_tags,
             word_classes: hit.rules.clone(),
         }],
         definitions: vec![Definition {
@@ -396,12 +586,17 @@ fn create_entry(
             dictionary_alias,
             id: hit.id,
             score: hit.score,
-            frequency_order: 0,
+            frequency_order: 0.0,
             sequences: vec![sequence],
-            is_primary: true,
-            tags: hit.definition_tags.clone(),
+            is_primary,
+            tags: Vec::new(),
+            tag_groups: definition_tags,
             entries: Vec::new(),
+            raw_entries: !is_primary,
+            has_form_of: !hit.form_of.is_empty(),
         }],
+        pronunciations: Vec::new(),
+        frequencies: Vec::new(),
     }
 }
 
@@ -478,7 +673,7 @@ fn add_user_facing_inflections(entry: &mut TermEntry) {
 
 /// _getJapaneseChineseKoreanOnlyText: the text up to the first character
 /// that is neither Japanese, Chinese nor Korean.
-fn japanese_chinese_korean_prefix(text: &str) -> &str {
+pub(crate) fn japanese_chinese_korean_prefix(text: &str) -> &str {
     for (i, c) in text.char_indices() {
         let code_point = u32::from(c);
         if !is_code_point_japanese(code_point)

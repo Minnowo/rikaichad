@@ -25,8 +25,12 @@ Usage: jisho [OPTIONS] <COMMAND> [ARGS]
 Commands:
   import <ZIP>...   Import Yomitan dictionary zips
   list              List imported dictionaries
-  remove <ID>       Remove a dictionary
+  remove <DICT>     Remove a dictionary
   lookup <TEXT>     Look up a word
+  kanji <TEXT>      Look up kanji
+  dictionary <DICT> Show or change one dictionary's lookup settings
+  order <DICT>...   Change the dictionary order
+  settings          Show or change store-wide lookup settings
   serve             Run the HTTP API
   bench             Measure lookup latency on the current store
 
@@ -88,6 +92,10 @@ fn run() -> Result<ExitCode, CliError> {
                     "list" => commands::list::run(&mut parser, &ctx),
                     "remove" => commands::remove::run(&mut parser, &ctx),
                     "lookup" => commands::lookup::run(&mut parser, &ctx),
+                    "kanji" => commands::kanji::run(&mut parser, &ctx),
+                    "dictionary" => commands::dictionary_settings::run(&mut parser, &ctx),
+                    "order" => commands::dictionary_settings::run_order(&mut parser, &ctx),
+                    "settings" => commands::settings::run(&mut parser, &ctx),
                     "serve" => commands::serve::run(&mut parser, &ctx),
                     "bench" => commands::bench::run(&mut parser, &ctx),
                     other => Err(CliError::new(format!(

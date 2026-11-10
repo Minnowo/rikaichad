@@ -5,6 +5,7 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
+use jisho_lookup::ResultMode;
 use serde::Deserialize;
 
 use crate::error::ApiError;
@@ -24,6 +25,7 @@ const MAX_LIMIT: usize = 1000;
 struct LookupRequest {
     text: String,
     mode: Option<String>,
+    result_mode: Option<String>,
     limit: Option<usize>,
     primary_reading: Option<String>,
     scan_length: Option<usize>,
@@ -50,6 +52,14 @@ pub async fn terms_lookup(
             )));
         }
     };
+    let result_mode = match request.result_mode.as_deref() {
+        None => ResultMode::default(),
+        Some(text) => ResultMode::parse(text).ok_or_else(|| {
+            ApiError::bad_request(format!(
+                "\"result_mode\" must be \"group\", \"merge\", \"split\", \"term\" or \"simple\", got {text:?}"
+            ))
+        })?,
+    };
     let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
     if !(1..=MAX_LIMIT).contains(&limit) {
         return Err(ApiError::bad_request(format!(
@@ -65,6 +75,7 @@ pub async fn terms_lookup(
     let lookup = Lookup {
         text: request.text,
         mode,
+        result_mode,
         limit,
         primary_reading: request.primary_reading.unwrap_or_default(),
         scan_length,

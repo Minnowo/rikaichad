@@ -4,4 +4,5 @@
 pub mod dictionaries_list;
 pub mod fallback;
 pub mod health;
+pub mod kanji_lookup;
 pub mod terms_lookup;

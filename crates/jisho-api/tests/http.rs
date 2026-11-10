@@ -113,11 +113,97 @@ fn lookup_limit_truncates() {
     let res = post_json(
         addr,
         "/v1/terms/lookup",
-        r#"{"text":"食べる","mode":"exact","limit":1}"#,
+        r#"{"text":"食べる","mode":"exact","result_mode":"split","limit":1}"#,
     );
     let body = res.json();
     assert_eq!(body["entries"].as_array().unwrap().len(), 1);
     assert_eq!(body["truncated"], true);
+    // Grouped (the default), both dictionaries' entries are one entry.
+    let res = post_json(
+        addr,
+        "/v1/terms/lookup",
+        r#"{"text":"食べる","mode":"exact","limit":1}"#,
+    );
+    let body = res.json();
+    assert_eq!(body["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(body["truncated"], false);
+    let titles: Vec<&str> = body["entries"][0]["definitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["dictionary"]["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["Fixture", "Second"]);
+}
+
+#[test]
+fn grouped_entries_carry_tags_and_metadata() {
+    let dir = TempDir::new("http-metadata");
+    let addr = start(&dir, |_| {});
+    let res = post_json(addr, "/v1/terms/lookup", r#"{"text":"食べる"}"#);
+    assert_eq!(res.status, 200);
+    let entry = &res.json()["entries"][0];
+    let tag = &entry["headwords"][0]["tags"][0];
+    assert_eq!(tag["name"], "P");
+    assert_eq!(tag["category"], "popular");
+    assert_eq!(tag["notes"][0], "common word");
+    assert_eq!(tag["dictionaries"][0], "Fixture");
+    let definition = &entry["definitions"][0];
+    assert_eq!(definition["headword_indices"][0], 0);
+    let names: Vec<&str> = definition["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["v1", "vt"]);
+    let frequency = &entry["frequencies"][0];
+    assert_eq!(frequency["frequency"], 250.0);
+    assert_eq!(frequency["display_value"], "250");
+    assert_eq!(frequency["dictionary"]["title"], "Fixture");
+
+    let res = post_json(
+        addr,
+        "/v1/terms/lookup",
+        r#"{"text":"ご飯","mode":"exact"}"#,
+    );
+    let pitch = &res.json()["entries"][0]["pronunciations"][0];
+    assert_eq!(pitch["headword_index"], 0);
+    assert_eq!(pitch["items"][0]["type"], "pitch_accent");
+    assert_eq!(pitch["items"][0]["position"], 1);
+
+    let res = post_json(
+        addr,
+        "/v1/terms/lookup",
+        r#"{"text":"x","result_mode":"grouped"}"#,
+    );
+    assert_eq!(res.status, 400);
+    assert_eq!(res.json()["error"]["code"], "bad_request");
+}
+
+#[test]
+fn kanji_lookup_returns_readings_stats_and_frequencies() {
+    let dir = TempDir::new("http-kanji");
+    let addr = start(&dir, |_| {});
+    let res = post_json(addr, "/v1/kanji/lookup", r#"{"text":"食べ"}"#);
+    assert_eq!(res.status, 200);
+    let body = res.json();
+    assert_eq!(body["entries"].as_array().unwrap().len(), 1);
+    let entry = &body["entries"][0];
+    assert_eq!(entry["character"], "食");
+    assert_eq!(entry["onyomi"][0], "ショク");
+    assert_eq!(entry["kunyomi"][0], "た.べる");
+    assert_eq!(entry["meanings"][0], "eat");
+    assert_eq!(entry["stats"][0]["category"], "misc");
+    assert_eq!(entry["stats"][0]["stats"][0]["value"], "9");
+    assert_eq!(entry["stats"][0]["stats"][0]["notes"], "stroke count");
+    assert_eq!(entry["frequencies"][0]["frequency"], 328.0);
+    assert_eq!(body["truncated"], false);
+
+    let res = post_json(addr, "/v1/kanji/lookup", r#"{"text":""}"#);
+    assert_eq!(res.status, 400);
+    let res = post_json(addr, "/v1/kanji/lookup", r#"{"text":"x","extra":1}"#);
+    assert_eq!(res.status, 400);
 }
 
 #[test]

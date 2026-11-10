@@ -10,7 +10,7 @@ use axum::routing::{get, post};
 
 use crate::config::ServeConfig;
 use crate::guard::{HostPolicy, guard, request_timeout};
-use crate::handlers::{dictionaries_list, fallback, health, terms_lookup};
+use crate::handlers::{dictionaries_list, fallback, health, kanji_lookup, terms_lookup};
 use crate::listener::GuardedListener;
 use crate::state::AppState;
 use crate::store_pool::{MAX_IDLE, StorePool};
@@ -45,6 +45,7 @@ pub fn router(config: ServeConfig) -> Result<Router, ServerError> {
     Ok(Router::new()
         .route("/v1/health", get(health::health))
         .route("/v1/terms/lookup", post(terms_lookup::terms_lookup))
+        .route("/v1/kanji/lookup", post(kanji_lookup::kanji_lookup))
         .route(
             "/v1/dictionaries",
             get(dictionaries_list::dictionaries_list),

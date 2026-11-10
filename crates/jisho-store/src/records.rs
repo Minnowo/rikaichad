@@ -4,6 +4,8 @@
 use jisho_format::Index;
 use serde_json::Value;
 
+use crate::settings::DictionarySettings;
+
 /// Row counts of one dictionary.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Counts {
@@ -31,6 +33,7 @@ pub struct DictionaryInfo {
     /// Import time, seconds since the Unix epoch.
     pub imported_at: i64,
     pub counts: Counts,
+    pub settings: DictionarySettings,
 }
 
 /// A matched term without its glossary: the small columns a scan ranks by.

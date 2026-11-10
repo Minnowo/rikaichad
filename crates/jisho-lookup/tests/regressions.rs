@@ -5,7 +5,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
 use jisho_format::Limits;
-use jisho_lookup::{EnabledDictionaries, FindTermsOptions, find_terms};
+use jisho_lookup::{EnabledDictionaries, FindTermsOptions, ResultMode, find_terms};
 use jisho_store::Store;
 use jisho_testkit::{TempDir, fixture};
 
@@ -33,7 +33,10 @@ fn merged_chains_are_shared_between_entries_of_a_deinflection() {
         &store,
         "いってーる",
         &dictionaries,
-        &FindTermsOptions::default(),
+        &FindTermsOptions {
+            mode: ResultMode::Split,
+            ..FindTermsOptions::default()
+        },
     )
     .unwrap();
     let ids: Vec<i64> = result.entries.iter().map(|e| e.definitions[0].id).collect();

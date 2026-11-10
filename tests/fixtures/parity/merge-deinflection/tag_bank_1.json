@@ -1,0 +1,8 @@
+[
+    ["P", "popular", -10, "popular term", 10],
+    ["ateji", "", 0, "ateji reading", 0],
+    ["v5", "partOfSpeech", 0, "godan verb", 0],
+    ["vt", "partOfSpeech", 0, "transitive verb", 0],
+    ["n", "partOfSpeech", 0, "noun", 0],
+    ["heiban", "pitch", 0, "flat", 0]
+]

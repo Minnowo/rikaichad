@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use jisho_api::{DictionaryJson, DictionaryListResponse};
+use jisho_api::{DictionaryJson, DictionaryListResponse, LookupSettingsJson};
 use lexopt::prelude::*;
 
 use super::Context;
@@ -36,13 +36,26 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         .into_iter()
         .map(DictionaryJson::from_info)
         .collect();
+    let settings = store.lookup_settings()?;
     if json {
-        out_json(&DictionaryListResponse { dictionaries })?;
+        out_json(&DictionaryListResponse {
+            dictionaries,
+            lookup_settings: LookupSettingsJson::from_settings(settings),
+        })?;
         return Ok(ExitCode::SUCCESS);
     }
     let mut text = String::new();
     for d in &dictionaries {
-        let state = if d.enabled { "" } else { " (disabled)" };
+        let mut state = String::new();
+        if !d.enabled {
+            state.push_str(" (disabled)");
+        }
+        if settings.main_dictionary.as_deref() == Some(d.title.as_str()) {
+            state.push_str(" (main)");
+        }
+        if settings.sort_frequency_dictionary.as_deref() == Some(d.title.as_str()) {
+            state.push_str(" (sort frequency)");
+        }
         let mut kinds = Vec::new();
         for (count, label) in [
             (d.counts.terms, "terms"),

@@ -39,7 +39,7 @@ pub fn terms_dictionary(title: &str) -> Vec<u8> {
             ),
             (
                 "tag_bank_1.json",
-                r#"[["P","popular",-10,"common word",10],["v1","partOfSpeech",0,"ichidan verb",0]]"#,
+                r#"[["P","popular",-10,"common word",10],["v1","partOfSpeech",0,"ichidan verb",0],["strokes","misc",0,"stroke count",0]]"#,
             ),
             (
                 "term_meta_bank_1.json",

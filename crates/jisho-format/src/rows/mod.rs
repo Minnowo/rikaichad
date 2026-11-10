@@ -8,7 +8,7 @@ mod tag;
 mod term;
 mod term_meta;
 
-pub use kanji::KanjiRow;
+pub use kanji::{KanjiRow, KanjiStats};
 pub use kanji_meta::KanjiMetaRow;
 pub use tag::TagRow;
 pub use term::TermRow;

@@ -2,11 +2,14 @@
 //! CLI commands, one per file. Each exposes `USAGE` and `run`.
 
 pub mod bench;
+pub mod dictionary_settings;
 pub mod import;
+pub mod kanji;
 pub mod list;
 pub mod lookup;
 pub mod remove;
 pub mod serve;
+pub mod settings;
 
 use std::path::PathBuf;
 
@@ -33,4 +36,17 @@ pub fn open_store(ctx: &Context) -> Result<Store, CliError> {
             ctx.store_path.display()
         ))
     })
+}
+
+/// Finds a dictionary by id (a number, as `jisho list` shows) or exact
+/// title; returns its id and title.
+pub fn resolve_dictionary(store: &Store, target: &str) -> Result<(i64, String), CliError> {
+    let dictionaries = store.lookup_dictionaries()?;
+    let found = match target.parse::<i64>() {
+        Ok(id) => dictionaries.into_iter().find(|d| d.id == id),
+        Err(_) => dictionaries.into_iter().find(|d| d.title == target),
+    };
+    found
+        .map(|d| (d.id, d.title))
+        .ok_or_else(|| CliError::new(format!("no dictionary {target:?} (see `jisho list`)")))
 }

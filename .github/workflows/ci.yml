@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Build, lint and test on Linux, macOS and Windows; check that a store file
 # written on Linux works unchanged on the other two (brief section 6,
-# milestone 1).
+# milestone 1); compare lookups on the public corpus with Yomitan's.
 name: ci
 
 on:
@@ -37,6 +37,21 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked
+
+  # Yomitan parity on the public corpus (docs/plan/milestone-3.md).
+  corpus-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Fetch the public corpus
+        run: scripts/fetch-corpus.sh
+      - name: Compare with Yomitan's results
+        run: cargo test --release -p jisho-lookup --test corpus_parity --locked -- --ignored --exact public_corpus_matches_golden
 
   portable-store-write:
     runs-on: ubuntu-latest

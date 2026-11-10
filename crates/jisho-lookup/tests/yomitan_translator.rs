@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Parity with Yomitan's translator tests (tests/fixtures/yomitan,
-//! copied from Yomitan's test/data): the Japanese "split"-mode cases,
-//! comparing everything milestone 2 produces. Tags, frequencies and
-//! pronunciations are milestone 3 and are left out of the comparison.
-//! Cases using textReplacements or other languages are out of jisho's scope.
+//! copied from Yomitan's test/data): every Japanese findTerms case (all
+//! result modes) and every findKanji case, comparing whole entries. Cases
+//! using textReplacements or other languages are out of jisho's scope.
 
 #![allow(
     clippy::unwrap_used,
@@ -17,8 +16,8 @@ use std::path::Path;
 
 use jisho_format::Limits;
 use jisho_lookup::{
-    DictionaryOptions, EnabledDictionaries, FindTermsOptions, TermEntry, find_terms,
-    load_glossaries,
+    DictionaryOptions, EnabledDictionaries, FindTermsOptions, KanjiEntry, PronunciationKind,
+    ResultMode, Tag, TermEntry, find_kanji, find_terms, load_glossaries,
 };
 use jisho_store::Store;
 use jisho_testkit::{Method, TempDir, ZipBuilder};
@@ -26,15 +25,13 @@ use serde_json::{Map, Value, json};
 
 const DICTIONARY_NAME: &str = "Test Dictionary 2";
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/yomitan");
-/// Keys compared in milestone 3, not now.
-const LATER_KEYS: [&str; 3] = ["tags", "frequencies", "pronunciations"];
 /// Yomitan rewrites image glossary items at import with the image file's
 /// real size; jisho does not read media (text only, brief section 4 item
 /// 11), so these keys of `type: "image"` items are not compared.
 const IMAGE_SIZE_KEYS: [&str; 4] = ["width", "height", "preferredWidth", "preferredHeight"];
 
 #[test]
-fn split_mode_results_match_yomitan() {
+fn results_match_yomitan() {
     let dir = TempDir::new("yomitan-translator");
     let mut store = Store::open(&dir.path().join("store.sqlite")).unwrap();
     let zip = dir.write(
@@ -52,44 +49,57 @@ fn split_mode_results_match_yomitan() {
         .iter()
         .map(|r| (r["name"].as_str().unwrap(), r))
         .collect();
-    let preset = &inputs["optionsPresets"]["default"];
 
-    let mut compared = 0;
+    let mut compared: HashMap<String, usize> = HashMap::new();
     let mut failures = Vec::new();
     for case in inputs["tests"].as_array().unwrap() {
-        if case["func"] != "findTerms" || case["mode"] != "split" {
-            continue;
-        }
-        let options = Value::Object(merged_options(preset, &case["options"]));
-        if options["language"] != "ja" || has_text_replacements(&options) {
-            continue;
-        }
+        let func = case["func"].as_str().unwrap();
+        let options = Value::Object(merged_options(&inputs["optionsPresets"], &case["options"]));
         let name = case["name"].as_str().unwrap();
         let text = case["text"].as_str().unwrap();
-        let dictionaries = enabled(&options, dictionary_id);
-        let find_options = FindTermsOptions {
-            remove_non_japanese_characters: options["removeNonJapaneseCharacters"]
-                .as_bool()
-                .unwrap_or(false),
-            deinflect: options["deinflect"].as_bool().unwrap_or(true),
-            primary_reading: options["primaryReading"].as_str().unwrap_or("").to_string(),
-            ..FindTermsOptions::default()
-        };
-        let mut result = find_terms(&store, text, &dictionaries, &find_options).unwrap();
-        let filled = load_glossaries(&store, &mut result.entries, usize::MAX).unwrap();
-        assert_eq!(filled, result.entries.len());
-
         let expected = expected_by_name[name];
-        let actual = json!({
-            "originalTextLength": result.original_text_length,
-            "dictionaryEntries": result.entries.iter().map(entry_json).collect::<Vec<_>>(),
-        });
-        let expected = json!({
-            "originalTextLength": expected["originalTextLength"],
-            "dictionaryEntries": expected["dictionaryEntries"],
-        });
+        let dictionaries = enabled(&options, dictionary_id);
+        let remove_non_japanese = options["removeNonJapaneseCharacters"]
+            .as_bool()
+            .unwrap_or(false);
+        let (actual, expected, label) = match func {
+            "findTerms" => {
+                if options["language"] != "ja" || has_text_replacements(&options) {
+                    continue;
+                }
+                let mode = case["mode"].as_str().unwrap();
+                let find_options = FindTermsOptions {
+                    mode: ResultMode::parse(mode).unwrap(),
+                    remove_non_japanese_characters: remove_non_japanese,
+                    deinflect: options["deinflect"].as_bool().unwrap_or(true),
+                    primary_reading: options["primaryReading"].as_str().unwrap_or("").to_string(),
+                    ..FindTermsOptions::default()
+                };
+                let mut result = find_terms(&store, text, &dictionaries, &find_options).unwrap();
+                let filled = load_glossaries(&store, &mut result.entries, usize::MAX).unwrap();
+                assert_eq!(filled, result.entries.len());
+                let actual = json!({
+                    "originalTextLength": result.original_text_length,
+                    "dictionaryEntries": result.entries.iter().map(entry_json).collect::<Vec<_>>(),
+                });
+                let expected = json!({
+                    "originalTextLength": expected["originalTextLength"],
+                    "dictionaryEntries": expected["dictionaryEntries"],
+                });
+                (actual, expected, mode.to_string())
+            }
+            "findKanji" => {
+                let entries = find_kanji(&store, text, &dictionaries, remove_non_japanese).unwrap();
+                let actual = json!({
+                    "dictionaryEntries": entries.iter().map(kanji_json).collect::<Vec<_>>(),
+                });
+                let expected = json!({"dictionaryEntries": expected["dictionaryEntries"]});
+                (actual, expected, "kanji".to_string())
+            }
+            other => panic!("unknown func {other}"),
+        };
         let actual = normalize(&strip_image_sizes(&actual));
-        let expected = normalize(&strip_image_sizes(&strip_later(&expected)));
+        let expected = normalize(&strip_image_sizes(&expected));
         if actual != expected {
             failures.push(format!(
                 "{name} ({text}):\n  expected {}\n  actual   {}",
@@ -97,12 +107,25 @@ fn split_mode_results_match_yomitan() {
                 serde_json::to_string(&actual).unwrap()
             ));
         }
-        compared += 1;
+        *compared.entry(label).or_default() += 1;
     }
-    assert_eq!(compared, 32, "number of compared cases changed");
+    let mut counts: Vec<(String, usize)> = compared.into_iter().collect();
+    counts.sort();
+    assert_eq!(
+        counts,
+        vec![
+            ("group".to_string(), 1),
+            ("kanji".to_string(), 3),
+            ("merge".to_string(), 2),
+            ("simple".to_string(), 1),
+            ("split".to_string(), 32),
+            ("term".to_string(), 1),
+        ],
+        "number of compared cases changed"
+    );
     assert!(
         failures.is_empty(),
-        "{} of {compared} differ:\n{}",
+        "{} differ:\n{}",
         failures.len(),
         failures.join("\n\n")
     );
@@ -135,33 +158,46 @@ fn dictionary_zip(directory: &Path) -> Vec<u8> {
 }
 
 fn enabled(options: &Value, dictionary_id: i64) -> EnabledDictionaries {
-    let mut by_id = HashMap::new();
+    let mut dictionaries = EnabledDictionaries::default();
     for pair in options["enabledDictionaryMap"].as_array().unwrap() {
         let settings = &pair[1];
-        by_id.insert(
+        dictionaries.by_id.insert(
             dictionary_id,
             DictionaryOptions {
                 index: settings["index"].as_u64().unwrap() as usize,
                 alias: settings["alias"].as_str().unwrap().to_string(),
                 title: DICTIONARY_NAME.to_string(),
-                parts_of_speech_filter: settings["partsOfSpeechFilter"].as_bool().unwrap(),
-                use_deinflections: settings["useDeinflections"].as_bool().unwrap(),
+                allow_secondary_searches: settings["allowSecondarySearches"]
+                    .as_bool()
+                    .unwrap_or(false),
+                parts_of_speech_filter: settings["partsOfSpeechFilter"].as_bool().unwrap_or(true),
+                use_deinflections: settings["useDeinflections"].as_bool().unwrap_or(true),
             },
         );
     }
-    EnabledDictionaries { by_id }
+    if options["mainDictionary"] == "${title}" {
+        dictionaries.main_dictionary = Some((dictionary_id, DICTIONARY_NAME.to_string()));
+    }
+    assert!(options["sortFrequencyDictionary"].is_null());
+    dictionaries
 }
 
-/// Yomitan's getCompositePreset: the preset, then each override object.
-fn merged_options(preset: &Value, options: &Value) -> Map<String, Value> {
-    let mut merged = preset.as_object().unwrap().clone();
-    if let Value::Array(list) = options {
-        for item in list {
-            if let Value::Object(overrides) = item {
-                for (key, value) in overrides {
-                    merged.insert(key.clone(), value.clone());
-                }
-            }
+/// Yomitan's getCompositePreset: a preset by name, or a list of preset
+/// names and override objects applied in order.
+fn merged_options(presets: &Value, options: &Value) -> Map<String, Value> {
+    let mut merged = Map::new();
+    let items = match options {
+        Value::Array(list) => list.clone(),
+        other => vec![other.clone()],
+    };
+    for item in items {
+        let overrides = match &item {
+            Value::String(preset) => presets[preset.as_str()].as_object().unwrap().clone(),
+            Value::Object(map) => map.clone(),
+            other => panic!("bad options item {other}"),
+        };
+        for (key, value) in overrides {
+            merged.insert(key, value);
         }
     }
     merged
@@ -173,7 +209,72 @@ fn has_text_replacements(options: &Value) -> bool {
         .is_some_and(|list| list.iter().any(|v| !v.is_null()))
 }
 
-/// A TermEntry in Yomitan's JSON shape (fields compared in milestone 2).
+fn tags_json(tags: &[Tag]) -> Value {
+    json!(
+        tags.iter()
+            .map(|t| json!({
+                "name": t.name,
+                "category": t.category,
+                "order": t.order,
+                "score": t.score,
+                "content": t.content,
+                "dictionaries": t.dictionaries,
+                "redundant": t.redundant,
+            }))
+            .collect::<Vec<_>>()
+    )
+}
+
+fn kanji_json(entry: &KanjiEntry) -> Value {
+    let stats: Map<String, Value> = entry
+        .stats
+        .iter()
+        .map(|(category, stats)| {
+            (
+                category.clone(),
+                json!(
+                    stats
+                        .iter()
+                        .map(|s| json!({
+                            "name": s.name,
+                            "category": s.category,
+                            "content": s.content,
+                            "order": s.order,
+                            "score": s.score,
+                            "dictionary": s.dictionary,
+                            "value": s.value,
+                        }))
+                        .collect::<Vec<_>>()
+                ),
+            )
+        })
+        .collect();
+    json!({
+        "type": "kanji",
+        "character": entry.character,
+        "dictionary": entry.dictionary,
+        "dictionaryIndex": entry.dictionary_index,
+        "dictionaryAlias": entry.dictionary_alias,
+        "onyomi": entry.onyomi,
+        "kunyomi": entry.kunyomi,
+        "tags": tags_json(&entry.tags),
+        "stats": stats,
+        "definitions": entry.definitions,
+        "frequencies": entry.frequencies.iter().map(|f| json!({
+            "index": f.index,
+            "dictionary": f.dictionary,
+            "dictionaryIndex": f.dictionary_index,
+            "dictionaryAlias": f.dictionary_alias,
+            "character": f.character,
+            "frequency": f.frequency,
+            "displayValue": f.display_value,
+            "displayValueParsed": f.display_value_parsed,
+            "frequencyMode": f.frequency_mode,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// A TermEntry in Yomitan's JSON shape.
 fn entry_json(entry: &TermEntry) -> Value {
     json!({
         "type": "term",
@@ -209,6 +310,7 @@ fn entry_json(entry: &TermEntry) -> Value {
                 "matchSource": s.match_source,
                 "isPrimary": s.is_primary,
             })).collect::<Vec<_>>(),
+            "tags": tags_json(&h.tags),
             "wordClasses": h.word_classes,
         })).collect::<Vec<_>>(),
         "definitions": entry.definitions.iter().map(|d| json!({
@@ -222,23 +324,43 @@ fn entry_json(entry: &TermEntry) -> Value {
             "frequencyOrder": d.frequency_order,
             "sequences": d.sequences,
             "isPrimary": d.is_primary,
+            "tags": tags_json(&d.tags),
             "entries": d.entries,
         })).collect::<Vec<_>>(),
+        "pronunciations": entry.pronunciations.iter().map(|p| json!({
+            "index": p.index,
+            "headwordIndex": p.headword_index,
+            "dictionary": p.dictionary,
+            "dictionaryIndex": p.dictionary_index,
+            "dictionaryAlias": p.dictionary_alias,
+            "pronunciations": p.pronunciations.iter().map(|item| match &item.kind {
+                PronunciationKind::PitchAccent { positions, nasal_positions, devoice_positions } => json!({
+                    "type": "pitch-accent",
+                    "positions": positions,
+                    "nasalPositions": nasal_positions,
+                    "devoicePositions": devoice_positions,
+                    "tags": tags_json(&item.tags),
+                }),
+                PronunciationKind::PhoneticTranscription { ipa } => json!({
+                    "type": "phonetic-transcription",
+                    "ipa": ipa,
+                    "tags": tags_json(&item.tags),
+                }),
+            }).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "frequencies": entry.frequencies.iter().map(|f| json!({
+            "index": f.index,
+            "headwordIndex": f.headword_index,
+            "dictionary": f.dictionary,
+            "frequencyMode": f.frequency_mode,
+            "dictionaryIndex": f.dictionary_index,
+            "dictionaryAlias": f.dictionary_alias,
+            "hasReading": f.has_reading,
+            "frequency": f.frequency,
+            "displayValue": f.display_value,
+            "displayValueParsed": f.display_value_parsed,
+        })).collect::<Vec<_>>(),
     })
-}
-
-/// Removes keys compared only from milestone 3 on, at any depth.
-fn strip_later(value: &Value) -> Value {
-    match value {
-        Value::Object(map) => Value::Object(
-            map.iter()
-                .filter(|(k, _)| !LATER_KEYS.contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), strip_later(v)))
-                .collect(),
-        ),
-        Value::Array(items) => Value::Array(items.iter().map(strip_later).collect()),
-        other => other.clone(),
-    }
 }
 
 /// Removes the media-derived size keys of image glossary items.

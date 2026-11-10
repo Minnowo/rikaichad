@@ -126,6 +126,14 @@ impl Store {
             ],
         )?;
         let id = tx.last_insert_rowid();
+        if index.sequenced {
+            // Yomitan's settings page makes the first sequenced dictionary
+            // the main dictionary (merge mode) when none is set.
+            tx.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES ('main_dictionary', ?1)",
+                [&index.title],
+            )?;
+        }
 
         let banks: Vec<EntryInfo> = BANK_ORDER
             .iter()
@@ -337,8 +345,9 @@ fn import_kanji(
             row.check(state.limits).map_err(invalid)?;
             let meanings = serde_json::to_string(&row.meanings)
                 .map_err(|e| invalid(format!("meanings: {e}")))?;
+            // Pairs, to keep the source order (see KanjiStats).
             let stats =
-                serde_json::to_string(&row.stats).map_err(|e| invalid(format!("stats: {e}")))?;
+                serde_json::to_string(&row.stats.0).map_err(|e| invalid(format!("stats: {e}")))?;
             insert.execute(params![
                 state.id,
                 row.character,

@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use jisho_api::{LookupMode, LookupRequest, run_lookup};
-use jisho_lookup::{EnabledDictionaries, FindTermsOptions, find_terms};
+use jisho_lookup::{EnabledDictionaries, FindTermsOptions, ResultMode, find_terms};
 use lexopt::prelude::*;
 
 use super::Context;
@@ -20,14 +20,15 @@ use crate::output::{CliError, out};
 use crate::peak_memory::peak_rss_bytes;
 
 pub const USAGE: &str = "\
-Usage: jisho bench [--sentences FILE] [--max-length N] [--limit N]
+Usage: jisho bench [--sentences FILE] [--max-length N] [--limit N] [--result-mode MODE]
 
 Measures scan latency on the current store. From every start position of
 every line in FILE (default bench/sentences.txt), the next --max-length
 characters (default 16) are looked up like POST /v1/terms/lookup does:
-timed once for finding and ranking entries, once for the full lookup with
-glossaries of the first --limit entries (default 32, Yomitan's maxResults). Run it on a machine
-with nothing else busy.
+timed once for finding, grouping and ranking entries with their tags and
+metadata, once for the full lookup with glossaries of the first --limit
+entries (default 32, Yomitan's maxResults). --result-mode is as for
+`jisho lookup` (default group). Run it on a machine with nothing else busy.
 ";
 
 const DEFAULT_SENTENCES: &str = "bench/sentences.txt";
@@ -38,8 +39,14 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     let mut sentences = PathBuf::from(DEFAULT_SENTENCES);
     let mut max_length = DEFAULT_MAX_LENGTH;
     let mut limit = DEFAULT_LIMIT;
+    let mut result_mode = ResultMode::default();
     while let Some(arg) = parser.next()? {
         match arg {
+            Long("result-mode") => {
+                let value = parser.value()?.string()?;
+                result_mode = ResultMode::parse(&value)
+                    .ok_or_else(|| CliError::new(format!("unknown result mode {value:?}")))?;
+            }
             Long("sentences") => sentences = PathBuf::from(parser.value()?),
             Long("max-length") => {
                 max_length = parser.value()?.parse()?;
@@ -70,10 +77,15 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     let store_bytes = file_size(&ctx.store_path);
 
     let dictionaries_enabled = EnabledDictionaries::from_store(&store)?;
-    let options = FindTermsOptions::default();
+    let options = FindTermsOptions {
+        mode: result_mode,
+        limit: Some(limit),
+        ..FindTermsOptions::default()
+    };
     let request = |text: &str| LookupRequest {
         text: text.to_string(),
         mode: LookupMode::Scan,
+        result_mode,
         limit,
         primary_reading: String::new(),
         scan_length: max_length,
@@ -115,7 +127,8 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         text.lines().filter(|l| !l.trim().is_empty()).count(),
         scans.len()
     ));
-    report.push_str(&summary("scan, find and rank", &mut rank_only));
+    report.push_str(&format!("result mode: {}\n", result_mode.as_str()));
+    report.push_str(&summary("scan, find, group and rank", &mut rank_only));
     report.push_str(&summary(
         &format!("scan, full lookup with glossaries of first {limit}"),
         &mut full_lookup,

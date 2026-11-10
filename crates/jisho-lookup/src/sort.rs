@@ -1,16 +1,17 @@
 // Ported from Yomitan ext/js/language/translator.js (_sortTermDictionaryEntries,
+// _sortTermDictionaryEntryDefinitions, _sortTermDictionaryEntrySimpleData,
 // _getShortestTextProcessingChainLength, _getShortestInflectionChainLength)
 // at ee81f8dcf13e985bb4d7961009fb49a764b4d924.
 // Copyright (C) 2023-2026  Yomitan Authors
 // Copyright (C) 2016-2022  Yomichan Authors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Result ordering. Yomitan breaks the last tie between equal-length
-//! headwords with Intl.Collator('en-US'); jisho compares code points
-//! instead (docs/brief.md section 5).
+//! headwords with Intl.Collator('en-US'); see [`crate::collation`].
 
 use std::cmp::Ordering;
 
-use crate::entry::TermEntry;
+use crate::collation;
+use crate::entry::{Definition, TermEntry};
 use crate::utf16::utf16_len;
 
 /// Sorts entries by Yomitan's criteria, in order: primary-reading match,
@@ -39,9 +40,9 @@ fn compare(v1: &TermEntry, v2: &TermEntry) -> Ordering {
             v2.source_term_exact_match_count
                 .cmp(&v1.source_term_exact_match_count)
         })
-        .then_with(|| v1.frequency_order.cmp(&v2.frequency_order))
+        .then_with(|| float_cmp(v1.frequency_order, v2.frequency_order))
         .then_with(|| v1.dictionary_index.cmp(&v2.dictionary_index))
-        .then_with(|| v2.score.partial_cmp(&v1.score).unwrap_or(Ordering::Equal))
+        .then_with(|| float_cmp(v2.score, v1.score))
         .then_with(|| compare_headwords(v1, v2))
         .then_with(|| v2.definitions.len().cmp(&v1.definitions.len()))
 }
@@ -52,12 +53,42 @@ fn compare_headwords(v1: &TermEntry, v2: &TermEntry) -> Ordering {
         if by_length != Ordering::Equal {
             return by_length;
         }
-        let by_text = h1.term.cmp(&h2.term);
+        let by_text = collation::compare(&h1.term, &h2.term);
         if by_text != Ordering::Equal {
             return by_text;
         }
     }
     Ordering::Equal
+}
+
+/// _sortTermDictionaryEntryDefinitions: frequency order, dictionary order,
+/// higher score, more headwords then smaller headword indices, original
+/// order.
+pub fn sort_definitions(definitions: &mut [Definition]) {
+    if definitions.len() <= 1 {
+        return;
+    }
+    definitions.sort_by(|v1, v2| {
+        float_cmp(v1.frequency_order, v2.frequency_order)
+            .then_with(|| v1.dictionary_index.cmp(&v2.dictionary_index))
+            .then_with(|| float_cmp(v2.score, v1.score))
+            .then_with(|| v2.headword_indices.len().cmp(&v1.headword_indices.len()))
+            .then_with(|| v1.headword_indices.cmp(&v2.headword_indices))
+            .then_with(|| v1.index.cmp(&v2.index))
+    });
+}
+
+/// _sortTermDictionaryEntrySimpleData: by the key (headword index,
+/// dictionary index, original index).
+pub fn sort_simple_data<T>(items: &mut [T], key: impl Fn(&T) -> (usize, usize, usize)) {
+    if items.len() > 1 {
+        items.sort_by_key(key);
+    }
+}
+
+/// `a - b` as an ordering, for finite numbers.
+fn float_cmp(a: f64, b: f64) -> Ordering {
+    a.partial_cmp(&b).unwrap_or(Ordering::Equal)
 }
 
 fn shortest_processing(chains: &[Vec<String>]) -> usize {
