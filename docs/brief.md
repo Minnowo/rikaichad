@@ -289,6 +289,9 @@ Yomitan source reading of 2026-11-10):
 |                      | CRC-32 warns instead of failing         | because zip always fails on CRC mismatch (survey: 8 of  |                    |          |
 |                      |                                         | 12 pitch dicts have bad CRCs; Yomitan ignores CRCs)     |                    |          |
 | rusqlite (`bundled`) | Store                                   | Indexed lookups, transactions, WAL concurrent readers   | MIT (SQLite: PD)   | yes      |
+| zstd (no default     | Compress stored glossaries with a       | 4x smaller at ~850 MB/s decompression with a trained    | MIT; libzstd       | yes (M3) |
+| features,            | dictionary trained per imported         | dictionary; flate2 (already here) gives 3x at 128 MB/s, | BSD-3-Clause       |          |
+| `zdict_builder`)     | dictionary                              | too slow for grouped lookups (docs/plan/milestone-3.md) |                    |          |
 | axum + tokio         | HTTP API                                | Maintained HTTP parser for a server that may face a     | MIT                | yes      |
 | (minimal features,   |                                         | network via --bind                                      |                    |          |
 | current_thread)      |                                         |                                                         |                    |          |
@@ -407,8 +410,9 @@ costs are in docs/plan/milestone-3.md: split mode meets the targets on the
 user's collection; group and merge full lookups return 10x more content
 and do not.
 
-Open: glossary compression (store is 65% of raw JSON) and import speed
-into a large existing store; neither is needed for the targets now.
+Glossaries are stored zstd-compressed with their plain text from store
+version 4 (docs/plan/milestone-3.md, Storage and response format). Open:
+import speed into a large existing store.
 
 ### HTTP
 

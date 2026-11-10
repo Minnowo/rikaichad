@@ -76,6 +76,7 @@ impl From<StoreError> for ApiError {
                 message,
             ),
             StoreError::Sqlite(_)
+            | StoreError::Corrupt { .. }
             | StoreError::Io { .. }
             | StoreError::UnsupportedStoreVersion { .. } => ApiError::internal(message),
         }

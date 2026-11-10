@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Term queries: matching on the small `terms` columns, then loading
-//! glossaries only for the entries a caller keeps.
+//! Term queries on the small `terms` columns (glossaries: glossaries.rs).
 
 use std::collections::HashMap;
 
 use rusqlite::Row;
-use serde_json::Value;
 
 use crate::error::StoreError;
 use crate::records::{BulkHit, MatchSource, TermHit, TermRecord, split_list};
@@ -13,7 +11,7 @@ use crate::store::Store;
 
 /// SQLite's default limit on bound parameters is 32766; batches stay well
 /// below it.
-const MAX_BATCH: usize = 4000;
+pub(crate) const MAX_BATCH: usize = 4000;
 
 impl Store {
     /// Terms whose expression or reading equals `text` exactly, from enabled
@@ -108,107 +106,6 @@ impl Store {
         Ok((claimed, truncated))
     }
 
-    /// Like [`Store::with_glossaries`], but stops before the total glossary
-    /// size (stored JSON bytes) would exceed `max_bytes`. Returns the records
-    /// and whether any hit was dropped.
-    pub fn with_glossaries_within(
-        &self,
-        hits: Vec<TermHit>,
-        max_bytes: usize,
-    ) -> Result<(Vec<TermRecord>, bool), StoreError> {
-        let ids: Vec<i64> = hits.iter().map(|h| h.id).collect();
-        let (mut glossaries, truncated) = self.glossaries_within(&ids, max_bytes)?;
-        let mut records = Vec::with_capacity(glossaries.len());
-        for hit in hits {
-            match glossaries.remove(&hit.id) {
-                Some(glossary) => records.push(TermRecord { hit, glossary }),
-                None => break,
-            }
-        }
-        Ok((records, truncated))
-    }
-
-    /// Glossaries of the terms `ids`, in order, stopping before the total
-    /// stored size would exceed `max_bytes`. Sizes are read before any
-    /// glossary is loaded, so an over-budget glossary never gets into
-    /// memory (`octet_length` reads the size from the record header without
-    /// reading the text). Returns the glossaries by id and whether any id was dropped.
-    pub fn glossaries_within(
-        &self,
-        ids: &[i64],
-        max_bytes: usize,
-    ) -> Result<(HashMap<i64, Vec<Value>>, bool), StoreError> {
-        let mut sizes: HashMap<i64, usize> = HashMap::with_capacity(ids.len());
-        for batch in ids.chunks(MAX_BATCH) {
-            let placeholders = vec!["?"; batch.len()].join(", ");
-            let mut stmt = self.conn.prepare(&format!(
-                "SELECT id, octet_length(glossary) FROM term_glossaries
-                 WHERE id IN ({placeholders})"
-            ))?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(batch.iter()), |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-            })?;
-            for row in rows {
-                let (id, size) = row?;
-                sizes.insert(id, usize::try_from(size).unwrap_or(usize::MAX));
-            }
-        }
-        let mut kept = Vec::with_capacity(ids.len());
-        let mut used = 0usize;
-        for &id in ids {
-            let size = sizes.get(&id).copied().unwrap_or(0);
-            if used.saturating_add(size) > max_bytes {
-                break;
-            }
-            used += size;
-            kept.push(id);
-        }
-        let truncated = kept.len() < ids.len();
-        Ok((self.load_glossaries(&kept)?, truncated))
-    }
-
-    /// Loads the glossaries of `hits`, keeping their order.
-    pub fn with_glossaries(&self, hits: Vec<TermHit>) -> Result<Vec<TermRecord>, StoreError> {
-        let ids: Vec<i64> = hits.iter().map(|h| h.id).collect();
-        let mut glossaries = self.load_glossaries(&ids)?;
-        Ok(hits
-            .into_iter()
-            .map(|hit| {
-                let glossary = glossaries.remove(&hit.id).unwrap_or_default();
-                TermRecord { hit, glossary }
-            })
-            .collect())
-    }
-
-    /// The stored glossaries of the terms `ids` (all items, including
-    /// deinflection references), by id.
-    pub fn load_glossaries(&self, ids: &[i64]) -> Result<HashMap<i64, Vec<Value>>, StoreError> {
-        let mut glossaries: HashMap<i64, Vec<Value>> = HashMap::with_capacity(ids.len());
-        for batch in ids.chunks(MAX_BATCH) {
-            let placeholders = vec!["?"; batch.len()].join(", ");
-            let mut stmt = self.conn.prepare(&format!(
-                "SELECT id, glossary FROM term_glossaries WHERE id IN ({placeholders})"
-            ))?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(batch.iter()), |row| {
-                let id: i64 = row.get(0)?;
-                let text: String = row.get(1)?;
-                Ok((id, text))
-            })?;
-            for row in rows {
-                let (id, text) = row?;
-                let glossary = serde_json::from_str(&text).map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        1,
-                        rusqlite::types::Type::Text,
-                        Box::new(e),
-                    )
-                })?;
-                glossaries.insert(id, glossary);
-            }
-        }
-        Ok(glossaries)
-    }
-
     /// Terms of the dictionaries with the given `(sequence, dictionary id)`
     /// pairs, enabled or not (Yomitan's findTermsBySequenceBulk); by pair
     /// position, then id. Pairs should be distinct.
@@ -258,68 +155,6 @@ impl Store {
         Ok(result)
     }
 
-    /// Stored glossary sizes in bytes of the terms `ids`, read from the
-    /// record headers (`octet_length`), not from the glossaries.
-    pub fn glossary_sizes(&self, ids: &[i64]) -> Result<HashMap<i64, usize>, StoreError> {
-        let mut sizes: HashMap<i64, usize> = HashMap::with_capacity(ids.len());
-        for batch in ids.chunks(MAX_BATCH) {
-            let placeholders = vec!["?"; batch.len()].join(", ");
-            let mut stmt = self.conn.prepare(&format!(
-                "SELECT id, octet_length(glossary) FROM term_glossaries
-                 WHERE id IN ({placeholders})"
-            ))?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(batch.iter()), |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-            })?;
-            for row in rows {
-                let (id, size) = row?;
-                sizes.insert(id, usize::try_from(size).unwrap_or(usize::MAX));
-            }
-        }
-        Ok(sizes)
-    }
-
-    /// A 64-bit hash of the glossary content of each of `items` (`(id,
-    /// keep deinflection references)`), as Yomitan compares definitions in
-    /// merge mode: the items, without deinflection references unless kept,
-    /// serialized with integral numbers as integers. Rows are read one at a
-    /// time, so memory stays at one glossary.
-    pub fn glossary_content_hashes(
-        &self,
-        items: &[(i64, bool)],
-    ) -> Result<HashMap<i64, u64>, StoreError> {
-        let keep: HashMap<i64, bool> = items.iter().copied().collect();
-        let mut hashes = HashMap::with_capacity(items.len());
-        let ids: Vec<i64> = items.iter().map(|(id, _)| *id).collect();
-        for batch in ids.chunks(MAX_BATCH) {
-            let placeholders = vec!["?"; batch.len()].join(", ");
-            let mut stmt = self.conn.prepare(&format!(
-                "SELECT id, glossary FROM term_glossaries WHERE id IN ({placeholders})"
-            ))?;
-            let mut rows = stmt.query(rusqlite::params_from_iter(batch.iter()))?;
-            while let Some(row) = rows.next()? {
-                let id: i64 = row.get(0)?;
-                let text: String = row.get(1)?;
-                let content = content_text(&text, keep.get(&id).copied().unwrap_or(false))?;
-                let mut hasher = std::hash::DefaultHasher::new();
-                std::hash::Hash::hash(&content, &mut hasher);
-                hashes.insert(id, std::hash::Hasher::finish(&hasher));
-            }
-        }
-        Ok(hashes)
-    }
-
-    /// The compared content of one glossary (see
-    /// [`Store::glossary_content_hashes`]), to confirm equal hashes.
-    pub fn glossary_content(&self, id: i64, keep_references: bool) -> Result<String, StoreError> {
-        let text: String = self.conn.query_row(
-            "SELECT glossary FROM term_glossaries WHERE id = ?1",
-            [id],
-            |row| row.get(0),
-        )?;
-        content_text(&text, keep_references)
-    }
-
     /// SQLite's query plan (`EXPLAIN QUERY PLAN`) for [`Store::find_terms`]
     /// with `n` texts, one line per step. For benchmarks and diagnostics.
     pub fn explain_find_terms(&self, n: usize) -> Result<Vec<String>, StoreError> {
@@ -338,23 +173,6 @@ impl Store {
         }
         Ok(lines)
     }
-}
-
-/// The glossary `text` as merge mode compares it.
-fn content_text(text: &str, keep_references: bool) -> Result<String, StoreError> {
-    let conversion = |e: serde_json::Error| {
-        StoreError::Sqlite(rusqlite::Error::FromSqlConversionFailure(
-            1,
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        ))
-    };
-    let mut items: Vec<Value> = serde_json::from_str(text).map_err(conversion)?;
-    items.retain(|item| keep_references || !item.is_array());
-    items
-        .iter_mut()
-        .for_each(jisho_format::canonicalize_numbers);
-    serde_json::to_string(&items).map_err(conversion)
 }
 
 /// Columns read by [`read_hit`], with the dictionaries join.

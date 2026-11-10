@@ -158,6 +158,10 @@ pub struct Definition {
     /// Without deinflection-reference items, except for entries merge mode
     /// adds by sequence or secondary search (Yomitan keeps them there).
     pub entries: Vec<Value>,
+    /// The glossary as JSON text with its plain-text rendering (same items
+    /// as `entries`), filled by [`crate::load_raw_glossaries`] for callers
+    /// that copy it into a response unparsed.
+    pub glossary: Option<jisho_store::RawGlossary>,
     /// Keep deinflection-reference items when loading the glossary.
     pub(crate) raw_entries: bool,
     /// The row's glossary has deinflection references.

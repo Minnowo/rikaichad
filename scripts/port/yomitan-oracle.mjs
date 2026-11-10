@@ -14,7 +14,8 @@
 //
 // Usage:
 //   scripts/port/prepare-yomitan-node.sh <ynode>
-//   python3 scripts/port/export-store.py <store> > rows.jsonl
+//   JISHO_EXPORT_STORE=<store> JISHO_EXPORT_OUT=rows.jsonl \
+//       cargo test --release -p jisho-store --test export_oracle -- --ignored
 //   node --max-old-space-size=8192 scripts/port/yomitan-oracle.mjs <ynode> rows.jsonl texts.txt \
 //       <modes, e.g. split,group,merge,kanji> > yomitan.jsonl
 

@@ -29,6 +29,8 @@ const WAL_RETRY_PAUSE: Duration = Duration::from_millis(10);
 /// concurrently with one writer.
 pub struct Store {
     pub(crate) conn: Connection,
+    /// Glossary decompression dictionaries, loaded on first use.
+    pub(crate) decoders: std::cell::RefCell<crate::glossary_codec::DecoderCache>,
 }
 
 impl Store {
@@ -47,7 +49,10 @@ impl Store {
             "PRAGMA synchronous = NORMAL; PRAGMA cache_size = -{CACHE_KIB}; PRAGMA temp_store = MEMORY;"
         ))?;
         schema::ensure(&mut conn)?;
-        Ok(Store { conn })
+        Ok(Store {
+            conn,
+            decoders: std::cell::RefCell::default(),
+        })
     }
 
     /// Makes this connection refuse writes (`PRAGMA query_only`). Used by

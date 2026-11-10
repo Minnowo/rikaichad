@@ -305,8 +305,8 @@ fn matching_is_capped_and_glossaries_respect_a_byte_budget() {
     assert_eq!(store.find_terms(&texts, None, 3).unwrap().len(), 3);
 
     let hits = store.find_terms(&texts, None, 10).unwrap();
-    // Each fixture glossary here is about 20-30 bytes of JSON.
-    let (records, truncated) = store.with_glossaries_within(hits.clone(), 40).unwrap();
+    // Each fixture glossary here is about 40-60 bytes of JSON with its text.
+    let (records, truncated) = store.with_glossaries_within(hits.clone(), 80).unwrap();
     assert_eq!(records.len(), 1);
     assert!(truncated);
     let (records, truncated) = store.with_glossaries_within(hits, 1 << 20).unwrap();
@@ -415,14 +415,14 @@ fn store_from_another_schema_version_is_refused_with_advice() {
     drop(Store::open(&path).unwrap());
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute(
-        "UPDATE meta SET value = '1' WHERE key = 'store_version'",
+        "UPDATE meta SET value = '3' WHERE key = 'store_version'",
         [],
     )
     .unwrap();
     drop(conn);
     let err = Store::open(&path).err().unwrap();
     assert!(
-        matches!(err, StoreError::UnsupportedStoreVersion { found: 1, .. }),
+        matches!(err, StoreError::UnsupportedStoreVersion { found: 3, .. }),
         "{err}"
     );
     assert!(
@@ -432,54 +432,25 @@ fn store_from_another_schema_version_is_refused_with_advice() {
 }
 
 #[test]
-fn version_2_store_is_migrated_in_place() {
-    let dir = TempDir::new("store-migrate");
-    let path = dir.path().join("store.sqlite");
-    let mut store = Store::open(&path).unwrap();
+fn glossaries_are_stored_compressed_and_read_back() {
+    let dir = TempDir::new("store-compressed");
+    let mut store = open(&dir);
     import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    let hits = store.find_terms(&["ご飯".to_string()], None, 10).unwrap();
+    let raw = store.load_raw_glossaries(&[hits[0].id]).unwrap();
+    let raw = &raw[&hits[0].id];
+    assert_eq!(raw.json, r#"["cooked rice","meal"]"#);
+    assert_eq!(raw.text, r#"["cooked rice","meal"]"#);
+    let sizes = store.glossary_sizes(&[hits[0].id]).unwrap();
+    assert_eq!(sizes[&hits[0].id], raw.len());
     drop(store);
-    // Make it look like a version 2 store.
-    let conn = rusqlite::Connection::open(&path).unwrap();
-    for column in [
-        "alias",
-        "allow_secondary_searches",
-        "parts_of_speech_filter",
-        "use_deinflections",
-    ] {
-        conn.execute_batch(&format!("ALTER TABLE dictionaries DROP COLUMN {column}"))
-            .unwrap();
-    }
-    conn.execute_batch(
-        "DELETE FROM meta WHERE key = 'main_dictionary';
-         UPDATE meta SET value = '2' WHERE key = 'store_version';",
-    )
-    .unwrap();
-    drop(conn);
-
-    let store = Store::open(&path).unwrap();
-    let dictionary = &store.lookup_dictionaries().unwrap()[0];
-    assert_eq!(dictionary.settings, DictionarySettings::default());
+    // A second connection loads the dictionary's decoder itself.
+    let store = open(&dir);
+    let records = store.with_glossaries(hits).unwrap();
     assert_eq!(
-        store.lookup_settings().unwrap().main_dictionary.as_deref(),
-        Some("A")
+        records[0].glossary,
+        vec![json!("cooked rice"), json!("meal")]
     );
-    assert_eq!(
-        store
-            .find_terms(&["食べる".to_string()], None, 10)
-            .unwrap()
-            .len(),
-        1
-    );
-    drop(store);
-    let conn = rusqlite::Connection::open(&path).unwrap();
-    let version: String = conn
-        .query_row(
-            "SELECT value FROM meta WHERE key = 'store_version'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, jisho_store::STORE_VERSION.to_string());
 }
 
 #[test]
@@ -649,7 +620,8 @@ fn metadata_queries_follow_indexeddb_order() {
         .map(|h| h.id)
         .collect();
     let sizes = store.glossary_sizes(&ids).unwrap();
-    assert_eq!(sizes[&ids[0]], r#"["same"]"#.len());
+    // Glossary and plain text JSON.
+    assert_eq!(sizes[&ids[0]], 2 * r#"["same"]"#.len());
     let items: Vec<(i64, bool)> = ids.iter().map(|&id| (id, false)).collect();
     let hashes = store.glossary_content_hashes(&items).unwrap();
     assert_eq!(hashes[&ids[0]], hashes[&ids[1]]);

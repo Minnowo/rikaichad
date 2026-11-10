@@ -26,7 +26,7 @@ pub use entry::{
     KanjiFrequency, KanjiStat, Pronunciation, PronunciationKind, RuleName, Source, Tag, TermEntry,
     TermFrequency, TermPronunciation,
 };
-pub use find_terms::{find_terms, load_glossaries};
+pub use find_terms::{find_terms, load_glossaries, load_raw_glossaries};
 pub use kanji::find_kanji;
 pub use options::{DictionaryOptions, EnabledDictionaries, FindTermsOptions, ResultMode};
 pub use utf16::utf16_len;

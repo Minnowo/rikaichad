@@ -15,7 +15,8 @@ Intl.Collator as in a browser):
     scripts/port/prepare-yomitan-node.sh <ynode>
     (cd tests/fixtures/parity/merge-deinflection && zip -X ../../../../md.zip *)
     jisho --store md.sqlite import md.zip
-    python3 scripts/port/export-store.py md.sqlite > md-rows.jsonl
+    JISHO_EXPORT_STORE=$PWD/md.sqlite JISHO_EXPORT_OUT=$PWD/md-rows.jsonl \
+        cargo test --release -p jisho-store --test export_oracle -- --ignored
     node scripts/port/yomitan-oracle.mjs <ynode> md-rows.jsonl \
         tests/fixtures/parity/merge-deinflection-texts.txt split,group,merge,term,simple \
         > tests/fixtures/parity/merge-deinflection-yomitan.jsonl

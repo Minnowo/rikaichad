@@ -15,11 +15,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use jisho_format::{
     Archive, EntryInfo, EntryKind, FormatError, Index, KanjiMetaRow, KanjiRow, Limits, TagRow,
-    TermMetaRow, TermRow, Warning, normalize_glossary, stream_rows,
+    TermMetaRow, TermRow, Warning, glossary_item_text, normalize_glossary, stream_rows,
 };
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::StoreError;
+use crate::glossary_codec::{self, GlossaryWriter};
 use crate::records::Counts;
 use crate::sha256::sha256_hex;
 use crate::store::Store;
@@ -149,6 +150,7 @@ impl Store {
                 files_total: banks.len(),
                 rows: 0,
             },
+            glossaries: GlossaryWriter::new(),
         };
         for entry in &banks {
             let warning = import_bank(&tx, &mut archive, entry, &mut state)?;
@@ -156,6 +158,12 @@ impl Store {
             state.progress.files_done += 1;
             progress(&state.progress);
         }
+        let rest = state.glossaries.finish()?;
+        insert_glossaries(&mut tx.prepare(INSERT_GLOSSARY)?, id, rest)?;
+        tx.execute(
+            "INSERT INTO glossary_dictionaries (dictionary, trained) VALUES (?1, ?2)",
+            params![id, state.glossaries.dictionary()],
+        )?;
         // Yomitan adds index.json tagMeta while processing tag files.
         if banks.iter().any(|e| e.kind == EntryKind::TagBank) {
             insert_index_tags(&tx, &index, &mut state)?;
@@ -208,6 +216,7 @@ struct ImportState<'a> {
     limits: &'a Limits,
     counts: Counts,
     progress: ImportProgress,
+    glossaries: GlossaryWriter,
 }
 
 fn import_bank(
@@ -250,8 +259,7 @@ fn import_terms(
              sequence, term_tags, form_of, content_count)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     )?;
-    let mut insert_glossary =
-        tx.prepare("INSERT INTO term_glossaries (id, glossary) VALUES (?1, ?2)")?;
+    let mut insert_glossary = tx.prepare(INSERT_GLOSSARY)?;
     let mut row_index: u64 = 0;
     let rows = stream_rows(
         reader,
@@ -266,6 +274,9 @@ fn import_terms(
             }
             let glossary = serde_json::to_string(&row.glossary)
                 .map_err(|e| invalid(format!("glossary: {e}")))?;
+            let texts: Vec<String> = row.glossary.iter().map(glossary_item_text).collect();
+            let text =
+                serde_json::to_string(&texts).map_err(|e| invalid(format!("glossary: {e}")))?;
             let references: Vec<&serde_json::Value> =
                 row.glossary.iter().filter(|item| item.is_array()).collect();
             let form_of = if references.is_empty() {
@@ -290,13 +301,32 @@ fn import_terms(
                 form_of,
                 content_count
             ])?;
-            insert_glossary.execute(params![term_id, glossary])?;
+            let ready = state
+                .glossaries
+                .push(term_id, glossary_codec::encode(&glossary, &text))?;
+            insert_glossaries(&mut insert_glossary, state.id, ready)?;
             row_index += 1;
             Ok(())
         },
     )?;
     state.counts.terms += rows;
     Ok(rows)
+}
+
+const INSERT_GLOSSARY: &str =
+    "INSERT INTO term_glossaries (id, dictionary, size, payload) VALUES (?1, ?2, ?3, ?4)";
+
+/// Inserts compressed glossaries `(term id, uncompressed size, payload)`
+/// with an [`INSERT_GLOSSARY`] statement.
+fn insert_glossaries(
+    insert: &mut rusqlite::Statement<'_>,
+    dictionary: i64,
+    rows: Vec<(i64, usize, Vec<u8>)>,
+) -> Result<(), StoreError> {
+    for (id, size, payload) in rows {
+        insert.execute(params![id, dictionary, to_i64(size as u64), payload])?;
+    }
+    Ok(())
 }
 
 fn import_term_meta(

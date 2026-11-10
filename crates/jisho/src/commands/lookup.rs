@@ -101,8 +101,10 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         out_json(&response)?;
     } else {
         let mut rendered = String::new();
-        for entry in &response.entries {
-            render_entry(entry, &mut rendered);
+        for raw in &response.entries {
+            let entry: TermEntryJson = serde_json::from_str(raw.get())
+                .map_err(|e| CliError::new(format!("bad lookup result: {e}")))?;
+            render_entry(&entry, &mut rendered);
         }
         if response.truncated {
             rendered.push_str(&format!("(more results; showing {limit})\n"));
@@ -215,7 +217,8 @@ fn render_entry(entry: &TermEntryJson, out: &mut String) {
         }
         out.push_str(&format!("  {}. {prefix}", number + 1));
         let indent = " ".repeat(format!("  {}. ", number + 1).len());
-        let items = &definition.glossary_text;
+        let items: Vec<String> =
+            serde_json::from_str(definition.glossary_text.get()).unwrap_or_default();
         if items.iter().all(|item| !item.contains('\n')) {
             // Short items on one line, as Yomitan's compact glossary.
             out.push_str(&items.join("; "));

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Store schema (version 3), creation and migration.
 //!
-//! The store is private to jisho (brief section 5). When a version change
-//! only adds columns, [`ensure`] migrates the store in place; otherwise the
-//! store has to be rebuilt from the user's zips.
+//! The store is private to jisho (brief section 5): a store from another
+//! version is refused and rebuilt from the user's zips.
 //! Tables mirror Yomitan's IndexedDB stores (terms, termMeta, kanji,
 //! kanjiMeta, tagMeta, dictionaries); media is not stored (text only).
 //! Row ids are assigned in import order, which Yomitan's merge mode sorts
@@ -16,9 +15,10 @@
 //! other glossary items: lookups need both for every match, and keeping
 //! them here means a scan never reads glossaries.
 //!
-//! Glossaries live in `term_glossaries` (same id as the term) rather than in
-//! `terms`: a scan matches hundreds of rows, ranks them using the small
-//! columns only, and loads glossaries just for the entries it returns.
+//! Glossaries live in `term_glossaries` (same id as the term, compressed;
+//! see glossary_codec.rs) rather than in `terms`: a scan matches hundreds
+//! of rows, ranks them using the small columns only, and loads glossaries
+//! just for the entries it returns.
 //! Keeping `terms` rows small also keeps them in the page cache
 //! (measured in milestone 1, docs/brief.md section 5).
 
@@ -28,18 +28,10 @@ use crate::error::StoreError;
 
 /// Schema version written by this build. 2: `terms.form_of` and
 /// `terms.content_count` (milestone 2). 3: per-dictionary lookup settings
-/// (`alias`, `allow_secondary_searches`, `parts_of_speech_filter`,
-/// `use_deinflections`) and settings in `meta` (milestone 3); kanji stats
-/// stored as `[[name, value], ...]` in source order.
-pub const STORE_VERSION: i64 = 3;
-
-/// Columns added in version 3, as `ALTER TABLE` clauses.
-const V3_DICTIONARY_COLUMNS: [&str; 4] = [
-    "alias TEXT",
-    "allow_secondary_searches INTEGER NOT NULL DEFAULT 0",
-    "parts_of_speech_filter INTEGER NOT NULL DEFAULT 1",
-    "use_deinflections INTEGER NOT NULL DEFAULT 1",
-];
+/// and settings in `meta`; kanji stats as `[[name, value], ...]` in source
+/// order. 4: glossaries stored zstd-compressed with their plain text
+/// (`term_glossaries.payload`, `glossary_dictionaries`).
+pub const STORE_VERSION: i64 = 4;
 
 const CREATE: &str = "
 CREATE TABLE meta (
@@ -80,8 +72,14 @@ CREATE TABLE terms (
     content_count   INTEGER NOT NULL
 );
 CREATE TABLE term_glossaries (
-    id       INTEGER PRIMARY KEY,
-    glossary TEXT NOT NULL
+    id         INTEGER PRIMARY KEY,
+    dictionary INTEGER NOT NULL,
+    size       INTEGER NOT NULL,
+    payload    BLOB NOT NULL
+);
+CREATE TABLE glossary_dictionaries (
+    dictionary INTEGER PRIMARY KEY,
+    trained    BLOB NOT NULL
 );
 CREATE INDEX terms_expression ON terms (expression);
 CREATE INDEX terms_reading ON terms (reading);
@@ -148,9 +146,7 @@ pub fn ensure(conn: &mut Connection) -> Result<(), StoreError> {
         tx.commit()?;
     }
     let found = stored_version(conn)?;
-    if found == 2 {
-        migrate_v2(conn)?;
-    } else if found != STORE_VERSION {
+    if found != STORE_VERSION {
         return Err(StoreError::UnsupportedStoreVersion {
             found,
             supported: STORE_VERSION,
@@ -166,39 +162,6 @@ fn stored_version(conn: &Connection) -> Result<i64, StoreError> {
         |row| row.get(0),
     )?;
     Ok(found.parse().unwrap_or(i64::MAX))
-}
-
-/// Version 2 to 3: adds the dictionary settings columns and picks the main
-/// dictionary as imports would have (the first sequenced one imported). Runs in an IMMEDIATE transaction
-/// and checks the version again, so concurrent openers migrate once.
-fn migrate_v2(conn: &mut Connection) -> Result<(), StoreError> {
-    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    if stored_version(&tx)? == 2 {
-        for column in V3_DICTIONARY_COLUMNS {
-            tx.execute_batch(&format!("ALTER TABLE dictionaries ADD COLUMN {column}"))?;
-        }
-        let main: Option<String> = tx
-            .query_row(
-                "SELECT title FROM dictionaries
-                 WHERE json_extract(index_json, '$.sequenced') = 1
-                 ORDER BY id LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if let Some(title) = main {
-            tx.execute(
-                "INSERT OR IGNORE INTO meta (key, value) VALUES ('main_dictionary', ?1)",
-                [title],
-            )?;
-        }
-        tx.execute(
-            "UPDATE meta SET value = ?1 WHERE key = 'store_version'",
-            [STORE_VERSION.to_string()],
-        )?;
-    }
-    tx.commit()?;
-    Ok(())
 }
 
 fn has_schema(conn: &Connection) -> Result<bool, StoreError> {

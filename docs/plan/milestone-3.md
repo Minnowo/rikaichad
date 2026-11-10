@@ -40,20 +40,22 @@ mode on the user's collection.
   tags with the same name and category merge; sort by order, then name.
 - Yomitan's default result mode is `group`; jisho's default follows.
 
-## Store changes (version 3, migrated in place from 2)
+## Store changes (version 4; older stores are refused and re-imported)
 
 - `dictionaries`: `alias`, `allow_secondary_searches`,
   `parts_of_speech_filter`, `use_deinflections`.
 - `meta`: `main_dictionary` (set at import to the first sequenced
   dictionary, as Yomitan's settings page does), `sort_frequency_dictionary`,
   `sort_frequency_order`.
-- Kanji stats keep their key order (JavaScript `Object.entries` order) for
-  new imports; stores from version 2 keep sorted keys (only ties in the
-  stat sort can differ).
+- Kanji stats keep their key order (JavaScript `Object.entries` order).
+- Glossaries stored compressed with their plain text (see Storage and
+  response format below). Version 3, briefly migrated in place from 2
+  during this milestone, is refused like 2: the user chose re-importing
+  over a migration that rewrites every glossary.
 
 ## Steps
 
-1.  [x] Store: v3 schema + migration, settings, queries above.
+1.  [x] Store: schema (v3, then v4), settings, queries above.
 2.  [x] jisho-lookup: tags, grouping, merge, metadata, sort frequencies,
         kanji.
 3.  [x] Translator parity test: every in-scope case, full entries.
@@ -168,18 +170,10 @@ Fixed while measuring:
 - Merge-mode definition dedupe compares glossaries as jisho stores them,
   with object keys sorted, so two glossaries that differ only in key order
   count as duplicates in jisho and not in Yomitan.
-- Kanji stats of stores imported before version 3 are in key order rather
-  than the dictionary's: the order of the stat categories and ties within
-  one can differ; importing again fixes it.
 - Two distinct tag names the collator calls equal (e.g. differing only by
   a zero-width character) on pronunciations: with a limit, jisho orders
   them by their first appearance among the kept entries, Yomitan among all
   entries.
-- Stores migrated from version 2 keep glossary numbers as written (`1.0`);
-  merge mode then counts `1` and `1.0` as different glossaries, Yomitan as
-  the same. Imports from version 3 on write integral numbers as integers.
-- `jisho serve --read-only` migrates a version 2 store in place when it
-  opens it (the migration only adds columns and a setting).
 - Image glossary sizes, textReplacements and non-Japanese languages as in
   milestone 2.
 
@@ -198,12 +192,51 @@ metadata-after-limit path and the sort-frequency path.
 |----|------------------------------------------------------------------|-------------------------------------------------------------------|
 | 1  | Merge dedupe loaded whole groups' glossaries outside any cap (300 x 1 MB rows: 609 MB) | Contents hashed one row at a time, only for definitions that can have a twin (same stored size, or references dropped); equal hashes confirmed |
 | 2  | Kanji stat key dedupe quadratic (1.4M keys: about 45 min)         | Hash map of key positions                                          |
-| 3  | `1` and `1.0` in glossaries count as different in merge dedupe    | Integral numbers written as integers at import and when hashing; migrated v2 stores noted |
+| 3  | `1` and `1.0` in glossaries count as different in merge dedupe    | Integral numbers written as integers at import and when hashing   |
 | 4  | Collator-equal pronunciation tag names ordered by kept entries only | Known difference (above)                                         |
 | 5  | Dedupe missed twins across SQL batches of 2000                    | Gone with finding 1's hashing                                      |
 | 6  | Docs said simple mode has no metadata (it has the sort dictionary's) | Docs, help and code comments fixed                              |
 | 7  | No committed differential at a limit; oracle shares the importer  | Crafted test also runs at limits 1 and 2 against Yomitan's output cut there; limitation noted above |
 | 8  | Main dictionary claims: removal clears it (Yomitan does not); migration picked by priority | Wording fixed; migration picks by import order |
-| 9  | v2 stats claim too narrow                                         | Corrected (above)                                                  |
-| 10 | `serve --read-only` migrates a v2 store                           | Noted (above)                                                      |
+| 9  | v2 stats claim too narrow                                         | Moot: version 4 requires re-importing                              |
+| 10 | `serve --read-only` migrates a v2 store                           | Moot: no migration in version 4                                    |
 | 11 | Oracle's `jisho` collator option stale                            | Removed                                                            |
+
+## Storage and response format (after the review)
+
+Grouped results carry the definitions of every dictionary, so a full
+lookup was mostly glossary handling (group mode, 99 dictionaries, mean per
+lookup: parse 5 ms, build JSON 1.8 ms, serialize to measure for the cap
+2.3 ms, plus a second serialization over HTTP). Changes, chosen by the
+user:
+
+1. Serialize once: each entry is serialized one time; that text is
+   measured for the response cap and copied into the response
+   (`serde_json` `raw_value`).
+2. Glossaries copied, not parsed: the stored glossary JSON goes into the
+   response as it is; only rows whose deinflection references must be
+   dropped are parsed.
+3. Plain text rendered at import and stored with the glossary.
+4. zstd compression (user approved the dependency): each glossary row's
+   glossary and text JSON in one payload, compressed at level 9 with a
+   ~110 KB dictionary trained per imported dictionary on its first 4 MB of
+   glossaries (crates/jisho-store/src/glossary_codec.rs). Prototype on
+   30,001 of the user's glossaries: zlib (already a dependency) 3.05x at
+   128 MB/s decompression, zstd without dictionary 2.77x at 493 MB/s, zstd
+   with a trained dictionary 4.0-4.5x at 750-850 MB/s.
+
+The oracle export (crates/jisho-store/tests/export_oracle.rs) now reads
+glossaries through the store, replacing scripts/port/export-store.py.
+Public corpus after the change: 5,538/5,538 queries identical to Yomitan;
+store 225 MB -> 116 MB with the text added; import 7 s -> 13 s.
+
+User collection after the change (99 dictionaries re-imported into store
+v4; 5 zips skipped as duplicate titles, as before): store 11.7 GB ->
+3.6 GB with the text added; import 723 s -> 879 s, peak 121 MB. Scans as
+above (967, 16 characters, limit 32), main dictionary JMdict:
+
+| Mode            | Find, group, rank p50 / p99 | Full lookup p50 / p99 (before -> now)   |
+|-----------------|-----------------------------|-----------------------------------------|
+| split           | 2.8 / 16.3 ms               | 4.3 / 19.6 -> 3.8 / 17.7 ms             |
+| group (default) | 4.1 / 22.0 ms               | 17.2 / 70.8 -> 9.0 / 33.2 ms            |
+| merge           | 7.3 / 71.3 ms               | 21.6 / 101.9 -> 12.1 / 76.8 ms          |

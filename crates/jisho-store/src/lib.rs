@@ -8,6 +8,8 @@
 
 mod dictionaries;
 mod error;
+mod glossaries;
+mod glossary_codec;
 mod import;
 mod integrity;
 mod lookup;
@@ -19,6 +21,7 @@ mod sha256;
 mod store;
 
 pub use error::StoreError;
+pub use glossary_codec::RawGlossary;
 pub use import::{ImportProgress, ImportReport};
 pub use metadata::{KanjiHit, KanjiMetaHit, TagRecord, TermMetaHit};
 pub use records::{BulkHit, Counts, DictionaryInfo, MatchSource, TermHit, TermRecord};

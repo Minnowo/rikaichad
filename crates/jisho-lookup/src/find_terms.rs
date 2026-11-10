@@ -20,7 +20,8 @@ use jisho_ja::{
     condition_flags_from_parts_of_speech, conditions_match, is_code_point_chinese,
     is_code_point_japanese, is_code_point_korean, user_facing_rule,
 };
-use jisho_store::{BulkHit, MatchSource, Store, StoreError, TermHit};
+use jisho_store::{BulkHit, MatchSource, RawGlossary, Store, StoreError, TermHit};
+use serde_json::Value;
 
 use crate::deinflection::{
     ChainTables, Deinflection, algorithm_deinflections, identity_deinflection,
@@ -204,15 +205,52 @@ fn expand_tags(
     Ok(())
 }
 
-/// Loads the glossaries of the definitions in `entries`, dropping
-/// deinflection-reference items as Yomitan does, until `max_bytes` of
-/// stored glossary JSON is used. Returns how many leading entries were
-/// filled completely; later entries keep empty glossaries and should be
-/// dropped by the caller.
+/// Loads the glossaries of the definitions in `entries` (parsed, into
+/// `entries`), dropping deinflection-reference items as Yomitan does, until
+/// `max_bytes` of stored glossary is used. Returns how many leading entries
+/// were filled completely; later entries keep empty glossaries and should
+/// be dropped by the caller.
 pub fn load_glossaries(
     store: &Store,
     entries: &mut [TermEntry],
     max_bytes: usize,
+) -> Result<usize, StoreError> {
+    fill_glossaries(store, entries, max_bytes, |definition, raw| {
+        let mut items: Vec<Value> =
+            serde_json::from_str(&raw.json).map_err(|e| corrupt(definition.id, &e))?;
+        let keep = definition.raw_entries;
+        items.retain(|item| keep || !item.is_array());
+        definition.entries = items;
+        Ok(())
+    })
+}
+
+/// Like [`load_glossaries`], but fills each definition's `glossary` with
+/// the stored JSON texts, unparsed (only rows whose deinflection references
+/// must be dropped are parsed). For responses that copy them as they are.
+pub fn load_raw_glossaries(
+    store: &Store,
+    entries: &mut [TermEntry],
+    max_bytes: usize,
+) -> Result<usize, StoreError> {
+    fill_glossaries(store, entries, max_bytes, |definition, raw| {
+        definition.glossary = Some(if definition.raw_entries || !definition.has_form_of {
+            raw
+        } else {
+            without_references(definition.id, &raw)?
+        });
+        Ok(())
+    })
+}
+
+/// Loads the glossaries of `entries` within `max_bytes` and hands each
+/// definition its stored glossary. Returns how many leading entries were
+/// filled completely.
+fn fill_glossaries(
+    store: &Store,
+    entries: &mut [TermEntry],
+    max_bytes: usize,
+    mut fill: impl FnMut(&mut Definition, RawGlossary) -> Result<(), StoreError>,
 ) -> Result<usize, StoreError> {
     let ids: Vec<i64> = entries
         .iter()
@@ -233,19 +271,13 @@ pub fn load_glossaries(
                 *n = n.saturating_sub(1);
                 *n
             });
-            let items = if remaining == 0 {
+            let raw = if remaining == 0 {
                 glossaries.remove(&definition.id)
             } else {
                 glossaries.get(&definition.id).cloned()
             };
-            match items {
-                Some(items) => {
-                    let raw = definition.raw_entries;
-                    definition.entries = items
-                        .into_iter()
-                        .filter(|item| raw || !item.is_array())
-                        .collect();
-                }
+            match raw {
+                Some(raw) => fill(definition, raw)?,
                 None => complete = false,
             }
         }
@@ -255,6 +287,27 @@ pub fn load_glossaries(
         filled += 1;
     }
     Ok(filled)
+}
+
+/// The glossary without its deinflection-reference items (and their text).
+fn without_references(id: i64, raw: &RawGlossary) -> Result<RawGlossary, StoreError> {
+    let items: Vec<Value> = serde_json::from_str(&raw.json).map_err(|e| corrupt(id, &e))?;
+    let texts: Vec<Value> = serde_json::from_str(&raw.text).map_err(|e| corrupt(id, &e))?;
+    let (items, texts): (Vec<Value>, Vec<Value>) = items
+        .into_iter()
+        .zip(texts)
+        .filter(|(item, _)| !item.is_array())
+        .unzip();
+    Ok(RawGlossary {
+        json: serde_json::to_string(&items).map_err(|e| corrupt(id, &e))?,
+        text: serde_json::to_string(&texts).map_err(|e| corrupt(id, &e))?,
+    })
+}
+
+fn corrupt(id: i64, error: &serde_json::Error) -> StoreError {
+    StoreError::Corrupt {
+        message: format!("glossary of term {id}: {error}"),
+    }
 }
 
 /// _getDeinflections: candidates with their matched rows, plus the
@@ -592,6 +645,7 @@ pub(crate) fn entry_from_hit(
             tags: Vec::new(),
             tag_groups: definition_tags,
             entries: Vec::new(),
+            glossary: None,
             raw_entries: !is_primary,
             has_form_of: !hit.form_of.is_empty(),
         }],

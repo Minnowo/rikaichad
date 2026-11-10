@@ -3,14 +3,14 @@
 //! `POST /v1/kanji/lookup` and the CLI's `lookup` and `kanji`: running the
 //! lookup ([`run_lookup`], [`run_kanji_lookup`]) and its JSON shape.
 
-use jisho_format::glossary_item_text;
 use jisho_lookup::{
     EnabledDictionaries, FindTermsOptions, KanjiEntry, PronunciationKind, ResultMode, Tag,
-    TermEntry, find_kanji, find_terms, load_glossaries,
+    TermEntry, find_kanji, find_terms, load_raw_glossaries,
 };
 use jisho_store::{Store, StoreError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_json::value::RawValue;
 
 use crate::text_length::TextLength;
 
@@ -57,7 +57,9 @@ pub const DEFAULT_LIMIT: usize = 32;
 /// Response of a term lookup.
 #[derive(Debug, Clone, Serialize)]
 pub struct LookupResponse {
-    pub entries: Vec<TermEntryJson>,
+    /// Each a serialized [`TermEntryJson`]: entries are serialized once,
+    /// to measure them for the response cap, and copied from there.
+    pub entries: Vec<Box<RawValue>>,
     pub matched: MatchedJson,
     /// True when entries were dropped by `limit` or the size cap.
     pub truncated: bool,
@@ -72,7 +74,7 @@ pub struct MatchedJson {
 
 /// One result: headwords, how they were reached, their definitions and
 /// metadata.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TermEntryJson {
     pub headwords: Vec<HeadwordJson>,
     pub definitions: Vec<DefinitionJson>,
@@ -92,7 +94,7 @@ pub struct TermEntryJson {
     pub pronunciations: Vec<PronunciationJson>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadwordJson {
     pub term: String,
     pub reading: String,
@@ -102,31 +104,31 @@ pub struct HeadwordJson {
     pub word_classes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceJson {
     pub original_text: String,
     pub transformed_text: String,
     pub deinflected_text: String,
-    pub match_type: &'static str,
-    pub match_source: &'static str,
+    pub match_type: String,
+    pub match_source: String,
     pub is_primary: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InflectionChainJson {
     /// "algorithm", "dictionary" or "both".
-    pub source: &'static str,
+    pub source: String,
     pub rules: Vec<RuleJson>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleJson {
     pub name: String,
     pub description: Option<String>,
 }
 
 /// An expanded tag (Yomitan's Tag).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TagJson {
     pub name: String,
     pub category: String,
@@ -140,7 +142,7 @@ pub struct TagJson {
     pub redundant: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefinitionJson {
     pub dictionary: DictionaryRefJson,
     /// Indexes into the entry's `headwords` this definition applies to.
@@ -151,14 +153,15 @@ pub struct DefinitionJson {
     pub sequences: Vec<i64>,
     pub is_primary: bool,
     pub tags: Vec<TagJson>,
-    /// Glossary items as imported (raw JSON).
-    pub glossary: Vec<Value>,
-    /// One plain-text rendering per `glossary` item.
-    pub glossary_text: Vec<String>,
+    /// Glossary items as imported (a JSON array, copied from the store).
+    pub glossary: Box<RawValue>,
+    /// One plain-text rendering per `glossary` item (a JSON array of
+    /// strings, rendered at import).
+    pub glossary_text: Box<RawValue>,
 }
 
 /// A frequency of one headword.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrequencyJson {
     pub headword_index: usize,
     pub dictionary: DictionaryRefJson,
@@ -174,7 +177,7 @@ pub struct FrequencyJson {
 }
 
 /// Pronunciations of one headword from one dictionary.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PronunciationJson {
     pub headword_index: usize,
     pub dictionary: DictionaryRefJson,
@@ -182,7 +185,7 @@ pub struct PronunciationJson {
 }
 
 /// A pitch accent or a phonetic transcription.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PronunciationItemJson {
     PitchAccent {
@@ -199,7 +202,7 @@ pub enum PronunciationItemJson {
 }
 
 /// Which dictionary something came from.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DictionaryRefJson {
     pub id: i64,
     pub title: String,
@@ -227,7 +230,7 @@ pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupRespon
     let budget = request
         .max_bytes
         .saturating_sub(ENVELOPE_ALLOWANCE + text.len() * 2);
-    let filled = load_glossaries(store, &mut result.entries, budget)?;
+    let filled = load_raw_glossaries(store, &mut result.entries, budget)?;
     if filled < result.entries.len() {
         truncated = true;
         result.entries.truncate(filled);
@@ -237,8 +240,8 @@ pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupRespon
     let mut entries = Vec::with_capacity(result.entries.len());
     let mut used = 0usize;
     for entry in result.entries {
-        let json = entry_json(entry);
-        let size = serde_json::to_vec(&json).map_or(usize::MAX, |v| v.len());
+        let json = serde_json::value::to_raw_value(&entry_json(entry)?).map_err(internal)?;
+        let size = json.get().len();
         if used.saturating_add(size) > budget {
             truncated = true;
             break;
@@ -271,8 +274,28 @@ fn tags_json(tags: Vec<Tag>) -> Vec<TagJson> {
         .collect()
 }
 
-fn entry_json(entry: TermEntry) -> TermEntryJson {
-    TermEntryJson {
+fn entry_json(entry: TermEntry) -> Result<TermEntryJson, StoreError> {
+    let mut definitions = Vec::with_capacity(entry.definitions.len());
+    for d in entry.definitions {
+        let glossary = d.glossary.ok_or_else(|| StoreError::Corrupt {
+            message: format!("glossary of term {} not loaded", d.id),
+        })?;
+        definitions.push(DefinitionJson {
+            dictionary: DictionaryRefJson {
+                id: d.dictionary_id,
+                title: d.dictionary,
+            },
+            headword_indices: d.headword_indices,
+            id: d.id,
+            score: d.score,
+            sequences: d.sequences,
+            is_primary: d.is_primary,
+            tags: tags_json(d.tags),
+            glossary: RawValue::from_string(glossary.json).map_err(internal)?,
+            glossary_text: RawValue::from_string(glossary.text).map_err(internal)?,
+        });
+    }
+    Ok(TermEntryJson {
         headwords: entry
             .headwords
             .into_iter()
@@ -286,8 +309,8 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
                         original_text: s.original_text,
                         transformed_text: s.transformed_text,
                         deinflected_text: s.deinflected_text,
-                        match_type: s.match_type,
-                        match_source: s.match_source,
+                        match_type: s.match_type.to_string(),
+                        match_source: s.match_source.to_string(),
                         is_primary: s.is_primary,
                     })
                     .collect(),
@@ -295,29 +318,12 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
                 word_classes: h.word_classes,
             })
             .collect(),
-        definitions: entry
-            .definitions
-            .into_iter()
-            .map(|d| DefinitionJson {
-                dictionary: DictionaryRefJson {
-                    id: d.dictionary_id,
-                    title: d.dictionary,
-                },
-                headword_indices: d.headword_indices,
-                id: d.id,
-                score: d.score,
-                sequences: d.sequences,
-                is_primary: d.is_primary,
-                tags: tags_json(d.tags),
-                glossary_text: d.entries.iter().map(glossary_item_text).collect(),
-                glossary: d.entries,
-            })
-            .collect(),
+        definitions,
         inflections: entry
             .inflection_rule_chain_candidates
             .into_iter()
             .map(|c| InflectionChainJson {
-                source: c.source.as_str(),
+                source: c.source.as_str().to_string(),
                 rules: c
                     .inflection_rules
                     .into_iter()
@@ -382,6 +388,13 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
                     .collect(),
             })
             .collect(),
+    })
+}
+
+/// A store glossary that is not valid JSON.
+fn internal(error: serde_json::Error) -> StoreError {
+    StoreError::Corrupt {
+        message: format!("glossary is not valid JSON: {error}"),
     }
 }
 
