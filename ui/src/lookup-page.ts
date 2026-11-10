@@ -33,14 +33,15 @@ export function renderLookupPage(root: HTMLElement, params: URLSearchParams, pag
         state.mode = linkedMode ?? state.mode;
     }
 
-    const input = el('input', 'flex-1');
+    // Phones: the box gets its own row, the mode and button the next one.
+    const input = el('input', 'w-full sm:w-auto sm:flex-1');
     input.type = 'search';
     input.placeholder = 'Japanese or romaji, e.g. taberarenakatta';
     input.setAttribute('aria-label', 'Text to look up');
     input.lang = 'ja';
     input.value = state.text;
 
-    const mode = el('select', '');
+    const mode = el('select', 'flex-1 sm:flex-none');
     mode.setAttribute('aria-label', 'Result grouping');
     for (const option of RESULT_MODES) {
         const node = el('option', '', option.label);
