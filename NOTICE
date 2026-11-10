@@ -9,6 +9,62 @@ Yomichan Authors, licensed under the GNU General Public License v3.0 or
 later. As permitted by section 13 of the GNU GPL v3, those parts remain
 under GPL-3.0-or-later and are combined with this AGPL-3.0-or-later work.
 
-Ported files (path in this repository, upstream path, upstream commit):
+Ported files and data (path in this repository, upstream path); upstream
+commit ee81f8dcf13e985bb4d7961009fb49a764b4d924 unless stated:
 
-(none yet)
+  crates/jisho-ja/data/japanese-transforms.json
+      ext/js/language/ja/japanese-transforms.js
+  crates/jisho-ja/data/romaji-to-hiragana.json
+      ext/js/language/ja/japanese-kana-romaji-dicts.js
+  crates/jisho-ja/data/nfkd.json, halfwidth-katakana.json, prolonged-sound.json
+      ext/js/language/CJK-util.js (ranges)
+  tests/fixtures/yomitan/
+      test/language/japanese-transforms.test.js, test/data/translator-test-*.json,
+      test/data/dictionaries/valid-dictionary1
+
+Ported Rust source files are listed below as they are added; each carries
+the upstream copyright lines and the GPL-3.0-or-later SPDX identifier.
+
+kanji-processor
+---------------
+
+crates/jisho-ja/data/kanji-variants.json is derived from the npm package
+kanji-processor 1.0.2 (https://www.npmjs.com/package/kanji-processor),
+used by Yomitan, under the MIT License:
+    MIT License
+
+    Copyright (c) 2024 Lyroxide
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Ported Rust source files
+------------------------
+
+  crates/jisho-ja/build.rs                   ext/js/language/language-transformer.js
+  crates/jisho-ja/src/transformer.rs         ext/js/language/language-transformer.js,
+                                             ext/js/language/language-transforms.js
+  crates/jisho-ja/src/kana.rs                ext/js/language/ja/japanese.js
+  crates/jisho-ja/src/cjk.rs                 ext/js/language/CJK-util.js, ja/japanese.js
+  crates/jisho-ja/src/cjk_languages.rs       ext/js/language/zh/chinese.js, ko/korean.js
+  crates/jisho-ja/src/romaji.rs              ext/js/language/ja/japanese-wanakana.js
+  crates/jisho-ja/src/text_preprocessors.rs  ext/js/language/ja/japanese-text-preprocessors.js,
+                                             CJK-util.js, language-descriptors.js
+  crates/jisho-ja/tests/yomitan_transforms.rs
+                                             test/fixtures/language-transformer-test.js,
+                                             test/language/japanese-transforms.test.js

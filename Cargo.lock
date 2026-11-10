@@ -333,6 +333,9 @@ dependencies = [
 [[package]]
 name = "jisho-ja"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "jisho-lookup"

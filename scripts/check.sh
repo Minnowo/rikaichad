@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 # Paths allowed to contain non-ASCII text (data that is non-ASCII by nature).
 # Inside .rs files, string and char literals may always hold non-ASCII.
-ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|bench/sentences.txt$|LICENSE$)'
+ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|crates/jisho-ja/data/.*[.]json$|bench/sentences.txt$|LICENSE$)'
 
 # Licenses allowed for dependencies (SPDX ids). See scripts/license_check.py
 # for how OR/AND/WITH expressions are evaluated.

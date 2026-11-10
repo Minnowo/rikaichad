@@ -30,3 +30,4 @@ and for checking behaviour. It is git-ignored.
 | `reference-src/yomitan`    | https://github.com/yomidevs/yomitan         | ee81f8dcf13e985bb4d7961009fb49a764b4d924   |
 | `reference-src/zipjs`      | https://github.com/gildas-lormeau/zip.js    | tag v2.7.54 (the version Yomitan locks)    |
 | `reference-src/zip2`       | https://github.com/zip-rs/zip2              | b03a868e (zip crate 9.5.0)                 |
+| `reference-src/kanji-processor-1.0.2` | https://registry.npmjs.org/kanji-processor/-/kanji-processor-1.0.2.tgz | 1.0.2, sha512 matches Yomitan's package-lock.json |
