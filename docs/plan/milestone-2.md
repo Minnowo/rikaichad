@@ -66,12 +66,23 @@ Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
         functions and the 9 preprocessors; differential test against
         Yomitan's own functions on 16k inputs (scripts/port/dump-ja-golden.mjs)
         instead of transcribing test/japanese-util.test.js.
-4.  [ ] jisho-store: `form_of` and `content_count` columns at import;
+4.  [x] jisho-store: `form_of` and `content_count` columns at import;
         bulk term query returning the matched expression/reading.
-5.  [ ] jisho-lookup: variants, deinflections, bulk matching, dictionary
+5.  [x] jisho-lookup: variants, deinflections, bulk matching, dictionary
         deinflections, entry creation, duplicate handling, sort.
-6.  [ ] Translator parity test (subset above).
+6.  [x] Translator parity test (subset above).
 7.  [ ] API `mode: "scan"` (default) and CLI `lookup` using it; response
         gains sources and rule chains; docs/api.md updated.
 8.  [ ] bench with real scans; record numbers; tune if targets missed.
 9.  [ ] Independent review; fix findings.
+
+## Results so far
+
+- Translator parity: all 32 in-scope cases (Japanese, split mode, no text
+  replacements) match Yomitan's expected results exactly, except the size
+  keys of image glossary items (width, height, preferredWidth,
+  preferredHeight), which Yomitan rewrites at import from the image files
+  and jisho, being text only, keeps as the dictionary states them.
+  Mutations (no sort; reading claims before term) make 4 and 3 cases fail.
+- The task description said 38 cases; the correct count is 32 (the other
+  split cases use textReplacements or other languages).

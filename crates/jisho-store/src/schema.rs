@@ -10,6 +10,11 @@
 //! removal (an API client holding a stale id must not hit another
 //! dictionary).
 //!
+//! `form_of` holds the glossary's deinflection references (`[term,
+//! [rules]]` items) as JSON, NULL if none, and `content_count` the number of
+//! other glossary items: lookups need both for every match, and keeping
+//! them here means a scan never reads glossaries.
+//!
 //! Glossaries live in `term_glossaries` (same id as the term) rather than in
 //! `terms`: a scan matches hundreds of rows, ranks them using the small
 //! columns only, and loads glossaries just for the entries it returns.
@@ -53,7 +58,9 @@ CREATE TABLE terms (
     rules           TEXT NOT NULL,
     score           REAL NOT NULL,
     sequence        INTEGER NOT NULL,
-    term_tags       TEXT NOT NULL
+    term_tags       TEXT NOT NULL,
+    form_of         TEXT,
+    content_count   INTEGER NOT NULL
 );
 CREATE TABLE term_glossaries (
     id       INTEGER PRIMARY KEY,

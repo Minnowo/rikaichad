@@ -340,6 +340,13 @@ dependencies = [
 [[package]]
 name = "jisho-lookup"
 version = "0.1.0"
+dependencies = [
+ "jisho-format",
+ "jisho-ja",
+ "jisho-store",
+ "jisho-testkit",
+ "serde_json",
+]
 
 [[package]]
 name = "jisho-store"

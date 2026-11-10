@@ -239,8 +239,8 @@ fn import_terms(
 ) -> Result<u64, StoreError> {
     let mut insert = tx.prepare(
         "INSERT INTO terms (dictionary, expression, reading, definition_tags, rules, score,
-             sequence, term_tags)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             sequence, term_tags, form_of, content_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     )?;
     let mut insert_glossary =
         tx.prepare("INSERT INTO term_glossaries (id, glossary) VALUES (?1, ?2)")?;
@@ -258,6 +258,18 @@ fn import_terms(
             }
             let glossary = serde_json::to_string(&row.glossary)
                 .map_err(|e| invalid(format!("glossary: {e}")))?;
+            let references: Vec<&serde_json::Value> =
+                row.glossary.iter().filter(|item| item.is_array()).collect();
+            let form_of = if references.is_empty() {
+                None
+            } else {
+                Some(
+                    serde_json::to_string(&references)
+                        .map_err(|e| invalid(format!("glossary: {e}")))?,
+                )
+            };
+            let content_count =
+                i64::try_from(row.glossary.len() - references.len()).unwrap_or(i64::MAX);
             let term_id = insert.insert(params![
                 state.id,
                 row.term,
@@ -266,7 +278,9 @@ fn import_terms(
                 row.rules,
                 row.score,
                 row.sequence,
-                row.term_tags
+                row.term_tags,
+                form_of,
+                content_count
             ])?;
             insert_glossary.execute(params![term_id, glossary])?;
             row_index += 1;

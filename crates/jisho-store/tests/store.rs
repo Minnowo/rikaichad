@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use jisho_format::Limits;
-use jisho_store::{Counts, Store, StoreError};
+use jisho_store::{Counts, MatchSource, Store, StoreError};
 use jisho_testkit::{TempDir, ZipBuilder, fixture};
 use serde_json::json;
 
@@ -335,6 +335,57 @@ fn oversized_row_is_rejected_at_import() {
         "{err}"
     );
     assert!(store.dictionaries().unwrap().is_empty());
+}
+
+#[test]
+fn deinflection_references_are_kept_out_of_glossary_content() {
+    let dir = TempDir::new("store-formof");
+    let mut store = open(&dir);
+    let zip = fixture::dictionary(
+        &fixture::index("Refs"),
+        &[(
+            "term_bank_1.json",
+            r#"[["食べた","たべた","","",0,[["食べる",["past"]]],1,""],
+                ["見た","みた","","",0,["saw",["見る",["past"]]],2,""]]"#,
+        )],
+    );
+    import(&mut store, &dir, "refs.zip", zip).unwrap();
+    let hits = store
+        .find_terms(&["食べた".to_string(), "見た".to_string()], 10)
+        .unwrap();
+    assert_eq!(
+        hits[0].form_of,
+        [("食べる".to_string(), vec!["past".to_string()])]
+    );
+    assert_eq!(hits[0].content_count, 0);
+    assert_eq!(hits[1].content_count, 1);
+    assert_eq!(hits[1].form_of.len(), 1);
+}
+
+#[test]
+fn bulk_lookup_claims_rows_like_indexeddb() {
+    let dir = TempDir::new("store-bulk");
+    let mut store = open(&dir);
+    import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    // The "taberu" row matches text 0 by reading and text 1 by term: the
+    // earlier text claims it, through the reading index.
+    let texts = vec![
+        "たべる".to_string(),
+        "食べる".to_string(),
+        "ご飯".to_string(),
+    ];
+    let bulk = store.find_terms_bulk(&texts, 100).unwrap();
+    let claims: Vec<(&str, usize, MatchSource)> = bulk
+        .iter()
+        .map(|b| (b.hit.term.as_str(), b.item_index, b.match_source))
+        .collect();
+    assert_eq!(
+        claims,
+        [
+            ("食べる", 0, MatchSource::Reading),
+            ("ご飯", 2, MatchSource::Term),
+        ]
+    );
 }
 
 fn open(dir: &TempDir) -> Store {

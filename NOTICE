@@ -65,6 +65,11 @@ Ported Rust source files
   crates/jisho-ja/src/romaji.rs              ext/js/language/ja/japanese-wanakana.js
   crates/jisho-ja/src/text_preprocessors.rs  ext/js/language/ja/japanese-text-preprocessors.js,
                                              CJK-util.js, language-descriptors.js
+  crates/jisho-lookup/src/entry.rs           ext/js/language/translator.js
+  crates/jisho-lookup/src/text_variants.rs   ext/js/language/translator.js
+  crates/jisho-lookup/src/deinflection.rs    ext/js/language/translator.js
+  crates/jisho-lookup/src/find_terms.rs      ext/js/language/translator.js
+  crates/jisho-lookup/src/sort.rs            ext/js/language/translator.js
   crates/jisho-ja/tests/yomitan_transforms.rs
                                              test/fixtures/language-transformer-test.js,
                                              test/language/japanese-transforms.test.js

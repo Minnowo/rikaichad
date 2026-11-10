@@ -49,6 +49,11 @@ pub struct TermHit {
     pub score: f64,
     pub sequence: i64,
     pub term_tags: Vec<String>,
+    /// Deinflection references from the glossary: (uninflected term, rule
+    /// names). Empty for almost all entries.
+    pub form_of: Vec<(String, Vec<String>)>,
+    /// Number of glossary items that are not deinflection references.
+    pub content_count: u32,
 }
 
 /// One term entry as stored (after Yomitan's import normalization).
@@ -59,10 +64,29 @@ pub struct TermRecord {
     pub glossary: Vec<Value>,
 }
 
-/// Splits a space-separated tag or rule list, dropping empty parts.
+/// Which index a bulk match came through (Yomitan's matchSource).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchSource {
+    Term,
+    Reading,
+}
+
+/// A term matched by [`crate::Store::find_terms_bulk`]: the hit, which input
+/// text claimed it and through which index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BulkHit {
+    pub hit: TermHit,
+    /// Index into the input texts of the text that claimed this row.
+    pub item_index: usize,
+    pub match_source: MatchSource,
+}
+
+/// Splits a space-separated tag or rule list like Yomitan's _splitField:
+/// an empty string gives no items; otherwise a plain split on ' ' (empty
+/// items from double spaces are kept).
 pub(crate) fn split_list(text: &str) -> Vec<String> {
-    text.split(' ')
-        .filter(|part| !part.is_empty())
-        .map(str::to_string)
-        .collect()
+    if text.is_empty() {
+        return Vec::new();
+    }
+    text.split(' ').map(str::to_string).collect()
 }

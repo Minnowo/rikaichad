@@ -7,5 +7,14 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[dependencies]
+jisho-ja = { path = "../jisho-ja" }
+jisho-store = { path = "../jisho-store" }
+serde_json = "1"
+
+[dev-dependencies]
+jisho-format = { path = "../jisho-format" }
+jisho-testkit = { path = "../jisho-testkit" }
+
 [lints]
 workspace = true
