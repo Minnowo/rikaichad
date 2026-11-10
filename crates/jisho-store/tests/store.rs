@@ -666,3 +666,25 @@ fn cancelled_import_writes_nothing() {
         .unwrap();
     assert_eq!(store.dictionaries().unwrap().len(), 1);
 }
+
+/// The glossary renderer and the lookup code recurse over structured
+/// content; nesting is bounded because parsing at import refuses JSON
+/// deeper than serde_json's limit (128).
+#[test]
+fn deeply_nested_glossary_is_refused_at_import() {
+    let dir = TempDir::new("store-deep");
+    let mut store = open(&dir);
+    let depth = 200;
+    let content = format!(
+        "{}\"x\"{}",
+        r#"{"tag":"span","content":"#.repeat(depth),
+        "}".repeat(depth)
+    );
+    let bank = format!(
+        r#"[["t","t","","",0,[{{"type":"structured-content","content":{content}}}],0,""]]"#
+    );
+    let zip = fixture::dictionary(&fixture::index("Deep"), &[("term_bank_1.json", &bank)]);
+    let err = import(&mut store, &dir, "deep.zip", zip).unwrap_err();
+    assert!(err.to_string().contains("recursion limit"), "{err}");
+    assert!(store.dictionaries().unwrap().is_empty());
+}

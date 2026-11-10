@@ -5,7 +5,7 @@
 //! Yomitan renders structured content to HTML and takes the browser's
 //! `innerText`, which cannot be reproduced without a DOM. These rules are
 //! jisho's own (docs/api.md): block tags start new lines, list items become
-//! "- " lines, table cells are joined with " | ", ruby becomes
+//! "- " lines ("1. ", "2. ", ... in ordered lists), table cells are joined with " | ", ruby becomes
 //! `base(reading)` unless the dictionary supplies its own `rp` parentheses,
 //! images become their alt/title/description text or "[image]". Clients
 //! that need faithful rendering use the raw glossary JSON.
@@ -62,6 +62,7 @@ fn render_element(map: &Map<String, Value>, out: &mut String) {
         "br" => out.push('\n'),
         "img" => out.push_str(&image_text(map)),
         "ruby" => render_ruby(content, out),
+        "ol" => render_ordered_list(content, out),
         "li" => {
             start_line(out);
             out.push_str("- ");
@@ -86,6 +87,31 @@ fn render_element(map: &Map<String, Value>, out: &mut String) {
         }
         _ => render_opt(content, out),
     }
+}
+
+/// An ordered list: its `li` children numbered from 1; anything else in
+/// it rendered as usual.
+fn render_ordered_list(content: Option<&Value>, out: &mut String) {
+    start_line(out);
+    let children: Vec<&Value> = match content {
+        Some(Value::Array(items)) => items.iter().collect(),
+        Some(other) => vec![other],
+        None => Vec::new(),
+    };
+    let mut number = 0;
+    for child in children {
+        match child {
+            Value::Object(map) if tag_of(child) == Some("li") => {
+                number += 1;
+                start_line(out);
+                out.push_str(&format!("{number}. "));
+                render_opt(map.get("content"), out);
+                start_line(out);
+            }
+            other => render(other, out),
+        }
+    }
+    start_line(out);
 }
 
 /// Ruby: `base(reading)`. If the dictionary provides `rp` fallback
@@ -230,6 +256,144 @@ mod tests {
             ]})),
             "漢(かん)"
         );
+    }
+
+    /// Every tag of the structured-content schema
+    /// (docs/reference/yomitan-schemas) has a case here, and the cases
+    /// match the schema's tag list exactly.
+    #[test]
+    fn every_schema_tag_renders() {
+        let cases: Vec<(&str, Value, &str)> = vec![
+            ("br", json!(["a", {"tag": "br"}, "b"]), "a\nb"),
+            (
+                "ruby",
+                json!({"tag": "ruby", "content": ["字", {"tag": "rt", "content": "じ"}]}),
+                "字(じ)",
+            ),
+            ("rt", json!(["x", {"tag": "rt", "content": "y"}]), "xy"),
+            (
+                "rp",
+                json!({"tag": "ruby", "content": ["字", {"tag": "rp", "content": "["}, {"tag": "rt", "content": "じ"}, {"tag": "rp", "content": "]"}]}),
+                "字[じ]",
+            ),
+            (
+                "table",
+                json!({"tag": "table", "content": {"tag": "tr", "content": [{"tag": "td", "content": "a"}, {"tag": "td", "content": "b"}]}}),
+                "a | b",
+            ),
+            (
+                "thead",
+                json!({"tag": "table", "content": [
+                    {"tag": "thead", "content": {"tag": "tr", "content": [{"tag": "th", "content": "h1"}, {"tag": "th", "content": "h2"}]}},
+                    {"tag": "tbody", "content": {"tag": "tr", "content": [{"tag": "td", "content": "a"}, {"tag": "td", "content": "b"}]}},
+                    {"tag": "tfoot", "content": {"tag": "tr", "content": {"tag": "td", "content": "f"}}}
+                ]}),
+                "h1 | h2\na | b\nf",
+            ),
+            (
+                "tbody",
+                json!({"tag": "tbody", "content": {"tag": "tr", "content": {"tag": "td", "content": "a"}}}),
+                "a",
+            ),
+            (
+                "tfoot",
+                json!({"tag": "tfoot", "content": {"tag": "tr", "content": {"tag": "td", "content": "f"}}}),
+                "f",
+            ),
+            (
+                "tr",
+                json!([{"tag": "tr", "content": {"tag": "td", "content": "1"}}, {"tag": "tr", "content": {"tag": "td", "content": "2"}}]),
+                "1\n2",
+            ),
+            (
+                "td",
+                json!({"tag": "tr", "content": [{"tag": "td", "content": "a"}, {"tag": "td", "content": "b"}]}),
+                "a | b",
+            ),
+            (
+                "th",
+                json!({"tag": "tr", "content": [{"tag": "th", "content": "a"}, {"tag": "td", "content": "b"}]}),
+                "a | b",
+            ),
+            (
+                "span",
+                json!(["a", {"tag": "span", "content": "b"}, "c"]),
+                "abc",
+            ),
+            (
+                "div",
+                json!(["a", {"tag": "div", "content": "b"}, "c"]),
+                "a\nb\nc",
+            ),
+            (
+                "ol",
+                json!({"tag": "ol", "content": [{"tag": "li", "content": "one"}, {"tag": "li", "content": "two"}]}),
+                "1. one\n2. two",
+            ),
+            (
+                "ul",
+                json!({"tag": "ul", "content": [{"tag": "li", "content": "one"}, {"tag": "li", "content": "two"}]}),
+                "- one\n- two",
+            ),
+            ("li", json!({"tag": "li", "content": "x"}), "- x"),
+            (
+                "details",
+                json!({"tag": "details", "content": [{"tag": "summary", "content": "more"}, "hidden"]}),
+                "more\nhidden",
+            ),
+            (
+                "summary",
+                json!(["a", {"tag": "summary", "content": "s"}, "b"]),
+                "a\ns\nb",
+            ),
+            (
+                "img",
+                json!({"tag": "img", "path": "a.png", "alt": "pic"}),
+                "pic",
+            ),
+            (
+                "a",
+                json!({"tag": "a", "href": "?query=x", "content": "x"}),
+                "x",
+            ),
+        ];
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../docs/reference/yomitan-schemas/dictionary-term-bank-v3-schema.json"
+        ))
+        .unwrap();
+        let mut tags = Vec::new();
+        collect_tags(&schema, &mut tags);
+        tags.sort();
+        tags.dedup();
+        let mut covered: Vec<&str> = cases.iter().map(|(t, _, _)| *t).collect();
+        covered.sort();
+        assert_eq!(covered, tags.iter().map(String::as_str).collect::<Vec<_>>());
+        for (tag, content, expected) in cases {
+            assert_eq!(sc(content), expected, "{tag}");
+        }
+    }
+
+    fn collect_tags(value: &Value, tags: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                if let Some(tag) = map.get("properties").and_then(|p| p.get("tag")) {
+                    if let Some(name) = tag.get("const").and_then(Value::as_str) {
+                        tags.push(name.to_string());
+                    }
+                    for name in tag
+                        .get("enum")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
+                        tags.extend(name.as_str().map(str::to_string));
+                    }
+                }
+                map.values().for_each(|v| collect_tags(v, tags));
+            }
+            Value::Array(items) => items.iter().for_each(|v| collect_tags(v, tags)),
+            _ => {}
+        }
     }
 
     #[test]

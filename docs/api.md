@@ -233,7 +233,12 @@ Response:
 - `glossary` is the dictionary's glossary as imported, without Yomitan's
   deinflection-reference items (entries merge mode adds by sequence keep
   them, as in Yomitan); `glossary_text` has one plain-text rendering per
-  item.
+  item, made at import: block elements start new lines, list items become
+  `- ` lines (`1. `, `2. `, ... in ordered lists), table cells are joined
+  with ` | `, ruby becomes `base(reading)` unless the dictionary gives its
+  own `rp` parentheses, images become their alt, title or description
+  text, or `[image]`. Yomitan itself renders HTML; clients that need its
+  look use `glossary`.
 - `matched.text` is the longest input prefix that produced an entry.
 
 ### POST /v1/kanji/lookup

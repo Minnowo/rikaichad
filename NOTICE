@@ -102,6 +102,15 @@ under the Unicode License v3:
     dealings in these Data Files or Software without prior written
     authorization of the copyright holder.
 
+Third-party crates
+------------------
+
+Binaries also contain the Rust crates in Cargo.lock (and the zstd and
+SQLite C libraries they bundle) under their own licenses, all permissive
+(MIT, Apache-2.0, BSD, Unicode, Zlib; SQLite is public domain).
+scripts/third-party-licenses.py writes their license texts for
+distribution with a binary (docs/install.md).
+
 Ported Rust source files
 ------------------------
 
