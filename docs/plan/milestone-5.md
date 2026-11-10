@@ -6,13 +6,10 @@ install docs, NOTICE.
 
 ## Decisions
 
-- Fuzzing: skipped for now (user decision 2026-11-10, offered cargo-fuzz
-  with a nightly toolchain, a stable-only random harness, or skipping).
-  The brief's done-criterion "each fuzzer runs 1 hour" is therefore open.
-  What stands in for it today: hostile-input tests from milestone 1
-  (caps, zip bombs, CRC, encrypted entries, oversized rows), the depth
-  limit test below, and every glossary of the user's 99 dictionaries
-  (9.06 million rows) rendered at import without a failure.
+- Fuzzing: first deferred, then run on the user's request ("ok lets run
+  the fuzz test", 2026-11-10), with cargo-fuzz (libFuzzer) on a nightly
+  toolchain. The fuzz crate (fuzz/) has its own workspace so the main
+  build stays on stable; scripts/check.sh only checks its formatting.
 - The brief says 17 tags; the structured-content schema has 20 (br, ruby,
   rt, rp, table, thead, tbody, tfoot, tr, td, th, span, div, ol, ul, li,
   details, summary, img, a). Coverage is checked against the schema.
@@ -33,6 +30,21 @@ install docs, NOTICE.
 4. [x] NOTICE: third-party crates section; scripts/third-party-licenses.py
        writes the license texts of the 65 crates compiled into the binary
        (fails if one ships no license file).
-5. [ ] Fuzzers (deferred, see Decisions).
+5. [x] Fuzzers: five targets in fuzz/fuzz_targets, seeded from the test
+       fixtures by fuzz/seed.py, each run for one hour (`-O`,
+       `-max_len=65536`, in parallel), no crash, panic, timeout or OOM:
+
+       | target  | input                                 | runs       | corpus |
+       |---------|---------------------------------------|------------|--------|
+       | archive | bytes as a dictionary zip             |  2,918,344 |  3,347 |
+       | rows    | first byte picks a bank kind, rest as its JSON | 10,182,948 |  9,442 |
+       | render  | bytes as structured content to text    | 23,710,707 |  7,107 |
+       | import  | bytes as a zip, imported into a store  |  2,061,876 |  2,923 |
+       | lookup  | op byte + text: lookup/kanji/parse/furigana on a fixture store | 100,809 | 1,623 |
+
+       lookup is slow (27 runs/s: every lookup runs the full translator
+       against SQLite), so in an hour libFuzzer grew its inputs only to
+       165 bytes; a longer run would reach longer texts. Peak RSS stayed
+       under 800 MB.
 6. [ ] Check script green on Linux/macOS/Windows CI: needs the GitHub
        repository; green locally on Linux.

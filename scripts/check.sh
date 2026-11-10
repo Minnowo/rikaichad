@@ -22,6 +22,8 @@ project_files() {
 
 step "format"
 cargo fmt --all --check
+# The fuzz crate is outside the workspace (nightly-only build).
+cargo fmt --manifest-path fuzz/Cargo.toml --check
 
 step "clippy"
 cargo clippy --workspace --all-targets --locked -- -D warnings

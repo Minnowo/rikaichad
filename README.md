@@ -83,6 +83,16 @@ scripts/check.sh    # format, lint, tests, ASCII, license and dependency checks
 jisho bench         # lookup latency on your store (bench/sentences.txt)
 ```
 
+Fuzzing needs a nightly toolchain and cargo-fuzz (`rustup toolchain
+install nightly`, `cargo install cargo-fuzz`):
+
+```sh
+python3 -I fuzz/seed.py                       # seed corpora from the fixtures
+cargo +nightly fuzz run -O import -- -max_total_time=3600 -max_len=65536
+```
+
+Targets: `archive`, `rows`, `render`, `import`, `lookup` (fuzz/fuzz_targets).
+
 Read AGENTS.md before contributing.
 
 ## License

@@ -1,0 +1,60 @@
+[package]
+name = "jisho-fuzz"
+description = "cargo-fuzz targets for jisho (docs/plan/milestone-5.md); needs nightly: cargo +nightly fuzz run <target>"
+license = "AGPL-3.0-or-later"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Not part of the main workspace: built only by cargo-fuzz on nightly.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+jisho-format = { path = "../crates/jisho-format" }
+jisho-ja = { path = "../crates/jisho-ja" }
+jisho-store = { path = "../crates/jisho-store" }
+jisho-lookup = { path = "../crates/jisho-lookup" }
+jisho-testkit = { path = "../crates/jisho-testkit" }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "archive"
+path = "fuzz_targets/archive.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rows"
+path = "fuzz_targets/rows.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "render"
+path = "fuzz_targets/render.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "import"
+path = "fuzz_targets/import.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lookup"
+path = "fuzz_targets/lookup.rs"
+test = false
+doc = false
+bench = false
