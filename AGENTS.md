@@ -19,12 +19,16 @@ for that module; the closer file wins on conflicts.
 
 ### 2. Keep it simple
 
-Write every language as if it were Go: limited, explicit control flow that a
-reader can follow top to bottom.
+Favour explicit control flow that a reader can follow top to bottom, but
+write idiomatic Rust, not Go in Rust syntax.
 
-- Prefer a plain `for` loop, `if` and early `return` over chained iterators,
-  comprehensions, clever combinators, ternary chains or metaprogramming when
-  the plain version is clearer.
+- Idiomatic Rust is fine and expected: `?`, `match`, `if let`/`let else`,
+  short iterator chains (`map`/`filter`/`collect`, `any`, `find`), `Option`
+  and `Result` combinators where they read naturally.
+- Switch to a plain `for` loop with `if` and early `return` when a chain
+  gets long, nests closures, needs side effects or makes errors awkward to
+  handle. Avoid clever combinator puzzles, macro or trait metaprogramming,
+  and generics without a second real use.
 - One way of doing a thing. No abstraction until there is a second real user
   of it. No speculative options, flags or extension points.
 - Handle errors explicitly at the point they occur. Do not swallow them, and do
@@ -156,6 +160,22 @@ done:
   edge cases, behaviour changes, rule violations from this file.
 - The reviewer does not edit code. The author fixes each finding or explains
   why it does not apply.
+- Only the top-level agent (the one talking to the user) spawns subagents,
+  including reviewers. See "Subagents" below.
+
+## Subagents
+
+- A subagent never spawns another subagent. This applies to every kind:
+  coding agents, reviewers, researchers, fetchers.
+- A coding subagent does not start its own reviewer; it finishes, reports,
+  and the top-level agent decides on and starts the review.
+- A reviewer does not start a second reviewer or a "verifier" of its own
+  findings; it reports, and the top-level agent decides if more review is
+  needed.
+- If a subagent thinks more agents are needed, it says so in its report
+  instead of spawning them.
+- When the top-level agent spawns a subagent, it includes this rule in the
+  subagent's instructions.
 
 ## Ask a human first
 
