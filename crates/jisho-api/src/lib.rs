@@ -26,8 +26,9 @@ pub use config::ServeConfig;
 pub use dictionary_json::{DictionaryJson, DictionaryListResponse};
 pub use error::ApiError;
 pub use lookup_json::{
-    DefinitionJson, HeadwordJson, InflectionChainJson, LookupMode, LookupRequest, LookupResponse,
-    MatchedJson, TermEntryJson, run_lookup,
+    DEFAULT_LIMIT, DEFAULT_SCAN_LENGTH, DefinitionJson, HeadwordJson, InflectionChainJson,
+    LookupMode, LookupRequest, LookupResponse, MAX_SCAN_LENGTH, MatchedJson, TermEntryJson,
+    run_lookup,
 };
 pub use server::{ServerError, router, run};
 pub use text_length::TextLength;

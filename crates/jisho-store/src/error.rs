@@ -64,7 +64,7 @@ impl fmt::Display for StoreError {
             }
             StoreError::UnsupportedStoreVersion { found, supported } => write!(
                 f,
-                "store version {found} is older than this jisho uses ({supported}); rebuild it with `jisho reimport --all`"
+                "store version {found} is older than this jisho uses ({supported}); delete the store file and import your dictionaries again"
             ),
             StoreError::ReadOnly => write!(f, "the store is open read-only"),
             StoreError::Interrupted => write!(f, "the query took too long and was stopped"),

@@ -33,9 +33,20 @@ pub struct LookupRequest {
     pub limit: usize,
     /// Entries with this reading sort first; empty for none.
     pub primary_reading: String,
-    /// Cap on stored glossary bytes loaded for the response.
+    /// Scan mode looks at only this many characters from the start of
+    /// `text` (Yomitan's scanning.length; default [`DEFAULT_SCAN_LENGTH`]).
+    pub scan_length: usize,
+    /// Cap on the serialized size of the returned entries, in bytes.
     pub max_bytes: usize,
 }
+
+/// Yomitan's default scanning.length.
+pub const DEFAULT_SCAN_LENGTH: usize = 16;
+/// Largest accepted scan length: the cost of a scan grows steeply with its
+/// length on repetitive input (docs/plan/milestone-2.md, review finding 1).
+pub const MAX_SCAN_LENGTH: usize = 32;
+/// Yomitan's default general.maxResults.
+pub const DEFAULT_LIMIT: usize = 32;
 
 /// Response of a term lookup.
 #[derive(Debug, Clone, Serialize)]
@@ -135,20 +146,38 @@ pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupRespon
         primary_reading: request.primary_reading.clone(),
         ..FindTermsOptions::default()
     };
-    let mut result = find_terms(store, &request.text, &dictionaries, &options)?;
-    let mut truncated = result.entries.len() > request.limit;
+    let text = match request.mode {
+        LookupMode::Scan => char_prefix(&request.text, request.scan_length.min(MAX_SCAN_LENGTH)),
+        LookupMode::Exact => request.text.as_str(),
+    };
+    let mut result = find_terms(store, text, &dictionaries, &options)?;
+    let mut truncated = result.truncated || result.entries.len() > request.limit;
     result.entries.truncate(request.limit);
     let budget = request
         .max_bytes
-        .saturating_sub(ENVELOPE_ALLOWANCE + request.text.len() * 2);
+        .saturating_sub(ENVELOPE_ALLOWANCE + text.len() * 2);
     let filled = load_glossaries(store, &mut result.entries, budget)?;
     if filled < result.entries.len() {
         truncated = true;
         result.entries.truncate(filled);
     }
-    let matched = utf16_prefix(&request.text, result.original_text_length);
+    // The glossary budget does not see chains, sources or tags; cap the
+    // serialized entries as a whole.
+    let mut entries = Vec::with_capacity(result.entries.len());
+    let mut used = 0usize;
+    for entry in result.entries {
+        let json = entry_json(entry);
+        let size = serde_json::to_vec(&json).map_or(usize::MAX, |v| v.len());
+        if used.saturating_add(size) > budget {
+            truncated = true;
+            break;
+        }
+        used += size;
+        entries.push(json);
+    }
+    let matched = utf16_prefix(text, result.original_text_length);
     Ok(LookupResponse {
-        entries: result.entries.into_iter().map(entry_json).collect(),
+        entries,
         matched: MatchedJson {
             length: TextLength::of(matched),
             text: matched.to_string(),
@@ -200,7 +229,6 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
         inflections: entry
             .inflection_rule_chain_candidates
             .into_iter()
-            .filter(|c| !c.inflection_rules.is_empty())
             .map(|c| InflectionChainJson {
                 source: c.source.as_str(),
                 rules: c
@@ -213,15 +241,19 @@ fn entry_json(entry: TermEntry) -> TermEntryJson {
                     .collect(),
             })
             .collect(),
-        text_processors: entry
-            .text_processor_rule_chain_candidates
-            .into_iter()
-            .filter(|c| !c.is_empty())
-            .collect(),
+        text_processors: entry.text_processor_rule_chain_candidates,
         score: entry.score,
         dictionary_index: entry.dictionary_index,
         is_primary: entry.is_primary,
         max_original_text_length: entry.max_original_text_length,
+    }
+}
+
+/// The first `count` characters of `text`.
+fn char_prefix(text: &str, count: usize) -> &str {
+    match text.char_indices().nth(count) {
+        Some((end, _)) => text.get(..end).unwrap_or(text),
+        None => text,
     }
 }
 

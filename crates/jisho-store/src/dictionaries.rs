@@ -39,6 +39,20 @@ impl Store {
         Ok(result)
     }
 
+    /// Ids and titles of the enabled dictionaries in lookup order (priority,
+    /// then id). Cheap: used on every lookup.
+    pub fn enabled_dictionaries(&self) -> Result<Vec<(i64, String)>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title FROM dictionaries WHERE enabled ORDER BY priority, id")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// Finds a dictionary by its title.
     pub fn dictionary_by_title(&self, title: &str) -> Result<DictionaryInfo, StoreError> {
         self.dictionaries()?

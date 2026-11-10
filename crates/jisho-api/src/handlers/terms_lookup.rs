@@ -9,12 +9,14 @@ use serde::Deserialize;
 
 use crate::error::ApiError;
 use crate::json_body::read_json;
-use crate::lookup_json::{LookupMode, LookupRequest as Lookup, run_lookup};
+use crate::lookup_json::{
+    DEFAULT_LIMIT, DEFAULT_SCAN_LENGTH, LookupMode, LookupRequest as Lookup, MAX_SCAN_LENGTH,
+    run_lookup,
+};
 use crate::response::json_response;
 use crate::state::AppState;
 
 const MAX_TEXT_CHARS: usize = 1000;
-const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 1000;
 
 #[derive(Deserialize)]
@@ -24,6 +26,7 @@ struct LookupRequest {
     mode: Option<String>,
     limit: Option<usize>,
     primary_reading: Option<String>,
+    scan_length: Option<usize>,
 }
 
 pub async fn terms_lookup(
@@ -53,11 +56,18 @@ pub async fn terms_lookup(
             "\"limit\" must be 1 to {MAX_LIMIT}, got {limit}"
         )));
     }
+    let scan_length = request.scan_length.unwrap_or(DEFAULT_SCAN_LENGTH);
+    if !(1..=MAX_SCAN_LENGTH).contains(&scan_length) {
+        return Err(ApiError::bad_request(format!(
+            "\"scan_length\" must be 1 to {MAX_SCAN_LENGTH}, got {scan_length}"
+        )));
+    }
     let lookup = Lookup {
         text: request.text,
         mode,
         limit,
         primary_reading: request.primary_reading.unwrap_or_default(),
+        scan_length,
         max_bytes: state.config.max_response_bytes,
     };
     let response = state

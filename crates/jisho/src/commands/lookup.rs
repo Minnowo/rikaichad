@@ -3,27 +3,30 @@
 
 use std::process::ExitCode;
 
-use jisho_api::{LookupMode, LookupRequest, TermEntryJson, run_lookup};
+use jisho_api::{
+    DEFAULT_LIMIT, DEFAULT_SCAN_LENGTH, LookupMode, LookupRequest, MAX_SCAN_LENGTH, TermEntryJson,
+    run_lookup,
+};
 use lexopt::prelude::*;
 
 use super::Context;
 use crate::output::{CliError, out, out_json, printable};
 
 pub const USAGE: &str = "\
-Usage: jisho lookup [--exact] [--json] [--limit N] [--reading R] <TEXT>
+Usage: jisho lookup [OPTIONS] <TEXT>
 
-Looks up the start of TEXT like Yomitan: the longest prefixes, with
-inflections undone and kana/width/romaji variants tried. Exits with status
-1 when nothing is found and 2 on errors.
+Looks up the start of TEXT like Yomitan: the longest prefixes of its first
+16 characters, with inflections undone and kana/width/romaji variants
+tried. Exits with status 1 when nothing is found and 2 on errors.
 
 Options:
-  --exact      Only entries whose term or reading is exactly TEXT
-  --json       Print the same JSON as POST /v1/terms/lookup
-  --limit N    At most N entries (default 100, max 1000)
-  --reading R  Sort entries with reading R first
+  --exact            Only entries whose term or reading is exactly TEXT
+  --json             Print the same JSON as POST /v1/terms/lookup
+  --limit N          At most N entries (default 32, max 1000)
+  --reading R        Sort entries with reading R first
+  --scan-length N    Characters of TEXT to scan (default 16, max 32)
 ";
 
-const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 1000;
 /// The CLI has no response size cap.
 const NO_BYTE_CAP: usize = usize::MAX;
@@ -33,12 +36,21 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     let mut mode = LookupMode::Scan;
     let mut limit = DEFAULT_LIMIT;
     let mut primary_reading = String::new();
+    let mut scan_length = DEFAULT_SCAN_LENGTH;
     let mut text: Option<String> = None;
     while let Some(arg) = parser.next()? {
         match arg {
             Long("json") => json = true,
             Long("exact") => mode = LookupMode::Exact,
             Long("reading") => primary_reading = parser.value()?.string()?,
+            Long("scan-length") => {
+                scan_length = parser.value()?.parse()?;
+                if !(1..=MAX_SCAN_LENGTH).contains(&scan_length) {
+                    return Err(CliError::new(format!(
+                        "--scan-length must be 1 to {MAX_SCAN_LENGTH}"
+                    )));
+                }
+            }
             Long("limit") => {
                 limit = parser.value()?.parse()?;
                 if !(1..=MAX_LIMIT).contains(&limit) {
@@ -64,6 +76,7 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
             mode,
             limit,
             primary_reading,
+            scan_length,
             max_bytes: NO_BYTE_CAP,
         },
     )?;

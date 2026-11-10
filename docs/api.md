@@ -49,7 +49,7 @@ Every error response has this body:
 |---------------------------------|---------|----------------------------------|
 | JSON request body               | 64 KiB  | `413`                            |
 | Lookup `text`                   | 1000 chars | `400`                         |
-| Results per lookup (`limit`)    | 100, max 1000 | Extra results dropped, `truncated: true` |
+| Results per lookup (`limit`)    | 32, max 1000 | Extra results dropped, `truncated: true` |
 | Response body                   | 16 MiB  | Results dropped from the end, `truncated: true` |
 | Request time                    | 10 s    | `503 timeout`                    |
 | Dictionary upload               | 4 GiB (`--max-upload`) | `413`             |
@@ -101,8 +101,9 @@ Request:
 |-------------------|--------|----------|------------------------------------------------------|
 | `text`            | string | required | Text to look up (1 to 1000 chars)                    |
 | `mode`            | string | `"scan"` | `"scan"`: Yomitan-style lookup of the start of `text`: its longest prefixes, with inflections undone and kana, width, romaji and kanji-variant forms tried. `"exact"`: entries whose term or reading is exactly `text` |
-| `limit`           | int    | 100      | Maximum entries returned (1 to 1000)                 |
+| `limit`           | int    | 32       | Maximum entries returned (1 to 1000; 32 is Yomitan's maxResults) |
 | `primary_reading` | string | none     | Entries with this reading sort first                 |
+| `scan_length`     | int    | 16       | Scan mode looks at only this many characters from the start of `text` (1 to 32; 16 is Yomitan's scanning length). The cost of a scan grows steeply with its length on repetitive input, hence the cap |
 
 Entries come in Yomitan's order (longest match first, then fewer
 transformations, exact matches, dictionary order, score, ...). Each entry
@@ -165,9 +166,12 @@ Response:
   matched.
 - `inflections` lists one chain per way the entry was reached; each chain
   starts at the inflection nearest the dictionary form (Yomitan's order).
-  Entries reached without undoing an inflection have no chains.
+  An empty chain means the entry was also reached without undoing any
+  inflection.
 - `text_processors` lists the preprocessors applied (Yomitan's ids), one
-  chain per way; empty when the text matched as typed.
+  chain per way; an empty chain means the text also matched as typed.
+- `truncated` is also true when a lookup matched more rows than the
+  internal safety cap (50,000), so results may be incomplete.
 - `glossary` is the dictionary's glossary as imported, without Yomitan's
   deinflection-reference items; `glossary_text` has one plain-text
   rendering per item.

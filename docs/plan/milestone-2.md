@@ -73,8 +73,8 @@ Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
 6.  [x] Translator parity test (subset above).
 7.  [x] API `mode: "scan"` (default) and CLI `lookup` using it; response
         gains sources and rule chains; docs/api.md updated.
-8.  [ ] bench with real scans; record numbers; tune if targets missed.
-9.  [ ] Independent review; fix findings.
+8.  [x] bench with real scans; record numbers; tune if targets missed.
+9.  [x] Independent review; fix findings.
 
 ## Results so far
 
@@ -95,3 +95,31 @@ Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
 - Public corpus (JMdict + KANJIDIC), 967 real scans of 16 chars: find and
   rank p50 0.71 ms / p99 1.95 ms; full lookup with glossaries of 100
   entries p50 1.00 ms / p99 2.75 ms.
+
+## Measurements (2026-11-10)
+
+User collection (99 dictionaries, 9.06M terms, store v2), 967 real scans
+of 16 chars, 3 runs: find and rank p50 2.29 ms / p99 14.4-14.9 ms; full
+lookup with glossaries of 32 entries p50 3.44-3.49 ms / p99 17.4-17.6 ms.
+Targets (p50 5 ms, p99 20 ms) met. With 100 entries the full lookup was
+p50 6.9 / p99 23.5 ms; 32 is Yomitan's default maxResults. Import of all
+104 zips: 723 s (run alongside the review agent), peak 91 MB.
+
+## Independent review (2026-11-10)
+
+The reviewer ran Yomitan's translator.js in node against the same JMdict
+data with an IndexedDB fake reproducing findTermsBulk's claim order: 1,917
+generated inputs matched except the documented collation tie-break and
+finding 2.
+
+| Id | Finding                                                         | Resolution                                                       |
+|----|-----------------------------------------------------------------|------------------------------------------------------------------|
+| 1  | 1000-char repetitive input: n^3-n^4 time/memory (300 chars: 9 s, 2.3 GB); response cap ignored chains | Scan length (Yomitan scanning.length, default 16, max 32); whole serialized entries count against the byte cap. Worst repetitive 1000-char inputs now 10-50 ms |
+| 2  | Yomitan shares chain arrays between entries of a deinflection; merges change them all (order differs for a crafted case) | Chain lists kept per deinflection by id and shared (dictionary deinflections share the parent's text-processor list); regression test with the reviewer's case |
+| 3  | Schema changed without a version bump                           | STORE_VERSION 2; message no longer mentions the missing reimport command |
+| 4  | Hit cap dropped rows silently                                   | find_terms_bulk reports it; lookup sets `truncated`              |
+| 5  | Empty chains dropped from JSON                                  | Kept; docs/api.md explains them                                  |
+| 6  | Lone-surrogate prefixes skipped                                 | No change: equivalent because import rejects lone surrogates (noted) |
+
+Also from profiling: the enabled-dictionary list is read with a cheap query
+instead of parsing every index.json per lookup.

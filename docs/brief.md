@@ -396,6 +396,12 @@ deadline checks): JMdict import 7.2 s (was 6.1 s, the per-byte row
 counter); full-store scans p50 0.71 ms / p99 4.4-5.0 ms to match and p50
 2.05 ms / p99 5.8-6.7 ms with glossaries (3 runs).
 
+Milestone 2, full Yomitan-style scans (prefixes, variants, deinflection,
+ranking) with Yomitan's defaults (scanning length 16, maxResults 32): user
+collection p50 3.4-3.5 ms / p99 17.4-17.6 ms for a complete lookup with
+glossaries; public corpus p50 1.0 ms / p99 2.7 ms. Targets met. Details in
+docs/plan/milestone-2.md.
+
 Open: glossary compression (store is 65% of raw JSON) and import speed
 into a large existing store; neither is needed for the targets now.
 

@@ -26,13 +26,13 @@ Measures scan latency on the current store. From every start position of
 every line in FILE (default bench/sentences.txt), the next --max-length
 characters (default 16) are looked up like POST /v1/terms/lookup does:
 timed once for finding and ranking entries, once for the full lookup with
-glossaries of the first --limit entries (default 100). Run it on a machine
+glossaries of the first --limit entries (default 32, Yomitan's maxResults). Run it on a machine
 with nothing else busy.
 ";
 
 const DEFAULT_SENTENCES: &str = "bench/sentences.txt";
 const DEFAULT_MAX_LENGTH: usize = 16;
-const DEFAULT_LIMIT: usize = 100;
+const DEFAULT_LIMIT: usize = jisho_api::DEFAULT_LIMIT;
 
 pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliError> {
     let mut sentences = PathBuf::from(DEFAULT_SENTENCES);
@@ -76,6 +76,7 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         mode: LookupMode::Scan,
         limit,
         primary_reading: String::new(),
+        scan_length: max_length,
         max_bytes: usize::MAX,
     };
 

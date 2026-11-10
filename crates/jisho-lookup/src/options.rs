@@ -59,14 +59,13 @@ impl EnabledDictionaries {
     /// default settings.
     pub fn from_store(store: &Store) -> Result<EnabledDictionaries, StoreError> {
         let mut by_id = HashMap::new();
-        let enabled = store.dictionaries()?.into_iter().filter(|d| d.enabled);
-        for (index, info) in enabled.enumerate() {
+        for (index, (id, title)) in store.enabled_dictionaries()?.into_iter().enumerate() {
             by_id.insert(
-                info.id,
+                id,
                 DictionaryOptions {
                     index,
-                    alias: info.index.title.clone(),
-                    title: info.index.title,
+                    alias: title.clone(),
+                    title,
                     parts_of_speech_filter: true,
                     use_deinflections: true,
                 },

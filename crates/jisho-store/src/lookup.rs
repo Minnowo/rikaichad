@@ -59,19 +59,23 @@ impl Store {
     /// claimed by the first request that finds it, where requests go text by
     /// text and, for each text, the expression index before the reading
     /// index; results in that request order, ids ascending within a request.
-    /// At most `max_hits` rows are considered (a safety cap).
+    /// At most `max_hits` rows are considered (a safety cap); the returned
+    /// flag is true when more rows matched and some were left out.
     pub fn find_terms_bulk(
         &self,
         texts: &[String],
         max_hits: usize,
-    ) -> Result<Vec<BulkHit>, StoreError> {
+    ) -> Result<(Vec<BulkHit>, bool), StoreError> {
         let positions: HashMap<&str, usize> = texts
             .iter()
             .enumerate()
             .map(|(i, t)| (t.as_str(), i))
             .collect();
+        let mut hits = self.find_terms(texts, max_hits.saturating_add(1))?;
+        let truncated = hits.len() > max_hits;
+        hits.truncate(max_hits);
         let mut claimed = Vec::new();
-        for hit in self.find_terms(texts, max_hits)? {
+        for hit in hits {
             let by_term = positions
                 .get(hit.term.as_str())
                 .map(|&i| (i, MatchSource::Term));
@@ -97,7 +101,7 @@ impl Store {
                 b.hit.id,
             )
         });
-        Ok(claimed)
+        Ok((claimed, truncated))
     }
 
     /// Like [`Store::with_glossaries`], but stops before the total glossary

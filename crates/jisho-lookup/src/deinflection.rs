@@ -12,6 +12,41 @@ use jisho_store::BulkHit;
 use crate::entry::{InflectionChain, InflectionSource, RuleName};
 use crate::text_variants::{TextCache, text_variants};
 
+/// Rule-chain lists shared by reference, as in Yomitan: each deinflection
+/// owns one text-processor list and one inflection list (by index here);
+/// every entry built from it, and every dictionary deinflection derived
+/// from it (text-processor list only), uses the same list, and merges in
+/// _getDictionaryEntries modify it in place for all of them.
+#[derive(Debug, Default)]
+pub struct ChainTables {
+    pub text_processors: Vec<Vec<Vec<String>>>,
+    pub inflections: Vec<Vec<InflectionChain>>,
+}
+
+impl ChainTables {
+    /// Adds a text-processor list and returns its id.
+    pub fn add_text_processors(&mut self, chains: Vec<Vec<String>>) -> usize {
+        self.text_processors.push(chains);
+        self.text_processors.len() - 1
+    }
+
+    /// Adds an inflection list and returns its id.
+    pub fn add_inflections(&mut self, chains: Vec<InflectionChain>) -> usize {
+        self.inflections.push(chains);
+        self.inflections.len() - 1
+    }
+
+    /// The text-processor list `id` (empty if unknown).
+    pub fn text_processors(&self, id: usize) -> &[Vec<String>] {
+        self.text_processors.get(id).map_or(&[], Vec::as_slice)
+    }
+
+    /// The inflection list `id` (empty if unknown).
+    pub fn inflections(&self, id: usize) -> &[InflectionChain] {
+        self.inflections.get(id).map_or(&[], Vec::as_slice)
+    }
+}
+
 /// One candidate: a deinflected text to look up, how it was derived, and
 /// the dictionary rows matched to it.
 #[derive(Debug, Clone)]
@@ -24,8 +59,10 @@ pub struct Deinflection {
     pub deinflected_text: String,
     /// Conditions the deinflected form carries (0: unconditioned).
     pub conditions: u32,
-    pub text_processor_rule_chain_candidates: Vec<Vec<String>>,
-    pub inflection_rule_chain_candidates: Vec<InflectionChain>,
+    /// Id of its text-processor list in [`ChainTables`].
+    pub text_processors: usize,
+    /// Id of its inflection list in [`ChainTables`].
+    pub inflections: usize,
     pub entries: Vec<BulkHit>,
 }
 
@@ -35,7 +72,7 @@ pub struct Deinflection {
 /// Yomitan shortens the text one UTF-16 code unit at a time; after an
 /// astral character that briefly leaves a lone surrogate, a prefix that
 /// can match nothing. Stepping by `char` gives the same candidates.
-pub fn algorithm_deinflections(text: &str) -> Vec<Deinflection> {
+pub fn algorithm_deinflections(text: &str, tables: &mut ChainTables) -> Vec<Deinflection> {
     let mut deinflections = Vec::new();
     let mut cache = TextCache::default();
     let ends: Vec<usize> = text
@@ -62,16 +99,18 @@ pub fn algorithm_deinflections(text: &str) -> Vec<Deinflection> {
                         description: None,
                     })
                     .collect();
+                let text_processors = tables.add_text_processors(processor_chains.clone());
+                let inflections = tables.add_inflections(vec![InflectionChain {
+                    source: InflectionSource::Algorithm,
+                    inflection_rules: rules,
+                }]);
                 deinflections.push(Deinflection {
                     original_text: raw_source.to_string(),
                     transformed_text: source.clone(),
                     deinflected_text: candidate.text,
                     conditions: candidate.conditions,
-                    text_processor_rule_chain_candidates: processor_chains.clone(),
-                    inflection_rule_chain_candidates: vec![InflectionChain {
-                        source: InflectionSource::Algorithm,
-                        inflection_rules: rules,
-                    }],
+                    text_processors,
+                    inflections,
                     entries: Vec::new(),
                 });
             }
@@ -81,14 +120,14 @@ pub fn algorithm_deinflections(text: &str) -> Vec<Deinflection> {
 }
 
 /// The single candidate used when deinflection is off.
-pub fn identity_deinflection(text: &str) -> Deinflection {
+pub fn identity_deinflection(text: &str, tables: &mut ChainTables) -> Deinflection {
     Deinflection {
         original_text: text.to_string(),
         transformed_text: text.to_string(),
         deinflected_text: text.to_string(),
         conditions: 0,
-        text_processor_rule_chain_candidates: Vec::new(),
-        inflection_rule_chain_candidates: Vec::new(),
+        text_processors: tables.add_text_processors(Vec::new()),
+        inflections: tables.add_inflections(Vec::new()),
         entries: Vec::new(),
     }
 }

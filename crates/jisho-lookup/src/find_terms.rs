@@ -20,7 +20,9 @@ use jisho_ja::{
 };
 use jisho_store::{BulkHit, MatchSource, Store, StoreError};
 
-use crate::deinflection::{Deinflection, algorithm_deinflections, identity_deinflection};
+use crate::deinflection::{
+    ChainTables, Deinflection, algorithm_deinflections, identity_deinflection,
+};
 use crate::entry::{
     Definition, FindTermsResult, Headword, InflectionChain, InflectionSource, RuleName, Source,
     TermEntry,
@@ -47,11 +49,21 @@ pub fn find_terms(
         return Ok(FindTermsResult {
             entries: Vec::new(),
             original_text_length: 0,
+            truncated: false,
         });
     }
-    let deinflections = deinflections(store, text, dictionaries, options)?;
+    let mut tables = ChainTables::default();
+    let mut truncated = false;
+    let deinflections = deinflections(
+        store,
+        text,
+        dictionaries,
+        options,
+        &mut tables,
+        &mut truncated,
+    )?;
     let (mut entries, original_text_length) =
-        dictionary_entries(deinflections, dictionaries, options);
+        dictionary_entries(deinflections, dictionaries, options, &mut tables);
     if entries.len() > 1 {
         sort_term_entries(&mut entries);
     }
@@ -61,6 +73,7 @@ pub fn find_terms(
     Ok(FindTermsResult {
         entries,
         original_text_length,
+        truncated,
     })
 }
 
@@ -107,18 +120,20 @@ fn deinflections(
     text: &str,
     dictionaries: &EnabledDictionaries,
     options: &FindTermsOptions,
+    tables: &mut ChainTables,
+    truncated: &mut bool,
 ) -> Result<Vec<Deinflection>, StoreError> {
     let mut deinflections = if options.deinflect {
-        algorithm_deinflections(text)
+        algorithm_deinflections(text, tables)
     } else {
-        vec![identity_deinflection(text)]
+        vec![identity_deinflection(text, tables)]
     };
     if deinflections.is_empty() {
         return Ok(Vec::new());
     }
-    add_entries(store, &mut deinflections, dictionaries, options)?;
-    let mut from_dictionary = dictionary_deinflections(&deinflections, dictionaries);
-    add_entries(store, &mut from_dictionary, dictionaries, options)?;
+    *truncated |= add_entries(store, &mut deinflections, dictionaries, options)?;
+    let mut from_dictionary = dictionary_deinflections(&deinflections, dictionaries, tables);
+    *truncated |= add_entries(store, &mut from_dictionary, dictionaries, options)?;
     deinflections.extend(from_dictionary);
 
     for deinflection in &mut deinflections {
@@ -136,6 +151,7 @@ fn deinflections(
 fn dictionary_deinflections(
     deinflections: &[Deinflection],
     dictionaries: &EnabledDictionaries,
+    tables: &mut ChainTables,
 ) -> Vec<Deinflection> {
     let mut result = Vec::new();
     for deinflection in deinflections {
@@ -151,8 +167,8 @@ fn dictionary_deinflections(
                 if form_of.is_empty() {
                     continue;
                 }
-                let chains = deinflection
-                    .inflection_rule_chain_candidates
+                let chains = tables
+                    .inflections(deinflection.inflections)
                     .iter()
                     .map(|chain| InflectionChain {
                         source: if chain.inflection_rules.is_empty() {
@@ -171,15 +187,15 @@ fn dictionary_deinflections(
                             .collect(),
                     })
                     .collect();
+                let inflections = tables.add_inflections(chains);
                 result.push(Deinflection {
                     original_text: deinflection.original_text.clone(),
                     transformed_text: deinflection.transformed_text.clone(),
                     deinflected_text: form_of.clone(),
                     conditions: 0,
-                    text_processor_rule_chain_candidates: deinflection
-                        .text_processor_rule_chain_candidates
-                        .clone(),
-                    inflection_rule_chain_candidates: chains,
+                    // Shared with the parent, as in Yomitan.
+                    text_processors: deinflection.text_processors,
+                    inflections,
                     entries: Vec::new(),
                 });
             }
@@ -191,13 +207,13 @@ fn dictionary_deinflections(
 /// _addEntriesToDeinflections + _matchEntriesToDeinflections: one bulk
 /// lookup of the distinct deinflected texts; each row goes to every
 /// candidate of the text that claimed it whose conditions fit the row's
-/// parts of speech.
+/// parts of speech. Returns whether the matched-rows cap left rows out.
 fn add_entries(
     store: &Store,
     deinflections: &mut [Deinflection],
     dictionaries: &EnabledDictionaries,
     options: &FindTermsOptions,
-) -> Result<(), StoreError> {
+) -> Result<bool, StoreError> {
     let mut terms: Vec<String> = Vec::new();
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut positions: HashMap<String, usize> = HashMap::new();
@@ -217,9 +233,10 @@ fn add_entries(
         }
     }
     if terms.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
-    for bulk in store.find_terms_bulk(&terms, options.max_hits)? {
+    let (rows, truncated) = store.find_terms_bulk(&terms, options.max_hits)?;
+    for bulk in rows {
         let filter = dictionaries
             .by_id
             .get(&bulk.hit.dictionary_id)
@@ -237,35 +254,40 @@ fn add_entries(
             }
         }
     }
-    Ok(())
+    Ok(truncated)
 }
 
 /// _getDictionaryEntries: one entry per row; a row reached again through a
 /// longer transformed text replaces the earlier entry, through an equally
-/// long one merges its rule chains.
+/// long one merges its rule chains (into the lists the entry shares with
+/// its deinflection, see [`ChainTables`]).
 fn dictionary_entries(
     deinflections: Vec<Deinflection>,
     dictionaries: &EnabledDictionaries,
     options: &FindTermsOptions,
+    tables: &mut ChainTables,
 ) -> (Vec<TermEntry>, usize) {
     let mut original_text_length = 0;
-    let mut entries: Vec<TermEntry> = Vec::new();
+    // Each entry with the ids of the chain lists it shares.
+    let mut entries: Vec<(TermEntry, usize, usize)> = Vec::new();
     let mut ids: HashSet<i64> = HashSet::new();
     for deinflection in deinflections {
         if deinflection.entries.is_empty() {
             continue;
         }
         original_text_length = original_text_length.max(utf16_len(&deinflection.original_text));
+        let shared = (deinflection.text_processors, deinflection.inflections);
         for row in &deinflection.entries {
             let id = row.hit.id;
             if !ids.contains(&id) {
-                entries.push(create_entry(row, &deinflection, dictionaries, options));
+                let entry = create_entry(row, &deinflection, dictionaries, options);
+                entries.push((entry, shared.0, shared.1));
                 ids.insert(id);
                 continue;
             }
             let Some(existing_index) = entries
                 .iter()
-                .position(|e| e.definitions.iter().any(|d| d.id == id))
+                .position(|(e, _, _)| e.definitions.iter().any(|d| d.id == id))
             else {
                 continue;
             };
@@ -273,6 +295,7 @@ fn dictionary_entries(
                 continue;
             };
             let existing_transformed = existing
+                .0
                 .headwords
                 .first()
                 .and_then(|h| h.sources.first())
@@ -287,17 +310,28 @@ fn dictionary_entries(
                 // Yomitan compares the new original text with the existing
                 // transformed text here; kept as is for parity.
                 if deinflection.original_text != existing_transformed {
-                    *existing = create_entry(row, &deinflection, dictionaries, options);
+                    *existing = (
+                        create_entry(row, &deinflection, dictionaries, options),
+                        shared.0,
+                        shared.1,
+                    );
                 }
             } else {
-                merge_inflection_chains(existing, &deinflection.inflection_rule_chain_candidates);
-                merge_text_processor_chains(
-                    existing,
-                    &deinflection.text_processor_rule_chain_candidates,
-                );
+                let (target_processors, target_inflections) = (existing.1, existing.2);
+                merge_inflection_chains(tables, target_inflections, shared.1);
+                merge_text_processor_chains(tables, target_processors, shared.0);
             }
         }
     }
+    let entries = entries
+        .into_iter()
+        .map(|(mut entry, processors, inflections)| {
+            entry.text_processor_rule_chain_candidates =
+                tables.text_processors(processors).to_vec();
+            entry.inflection_rule_chain_candidates = tables.inflections(inflections).to_vec();
+            entry
+        })
+        .collect();
     (entries, original_text_length)
 }
 
@@ -334,10 +368,9 @@ fn create_entry(
     };
     TermEntry {
         is_primary: true,
-        text_processor_rule_chain_candidates: deinflection
-            .text_processor_rule_chain_candidates
-            .clone(),
-        inflection_rule_chain_candidates: deinflection.inflection_rule_chain_candidates.clone(),
+        // Filled from the shared chain lists once all merges are done.
+        text_processor_rule_chain_candidates: Vec::new(),
+        inflection_rule_chain_candidates: Vec::new(),
         score: hit.score,
         frequency_order: 0,
         dictionary_index,
@@ -372,21 +405,19 @@ fn create_entry(
     }
 }
 
-fn merge_inflection_chains(existing: &mut TermEntry, candidates: &[InflectionChain]) {
+/// _mergeInflectionRuleChains into the shared list `target`.
+fn merge_inflection_chains(tables: &mut ChainTables, target: usize, source: usize) {
+    let candidates = tables.inflections(source).to_vec();
+    let Some(existing) = tables.inflections.get_mut(target) else {
+        return;
+    };
     for candidate in candidates {
+        let candidate_names = names(&candidate.inflection_rules);
         let duplicate = existing
-            .inflection_rule_chain_candidates
             .iter_mut()
-            .find(|chain| {
-                equal_ignore_order(
-                    &names(&chain.inflection_rules),
-                    &names(&candidate.inflection_rules),
-                )
-            });
+            .find(|chain| equal_ignore_order(&names(&chain.inflection_rules), &candidate_names));
         match duplicate {
-            None => existing
-                .inflection_rule_chain_candidates
-                .push(candidate.clone()),
+            None => existing.push(candidate),
             Some(chain) => {
                 if chain.source != candidate.source {
                     chain.source = InflectionSource::Both;
@@ -396,16 +427,18 @@ fn merge_inflection_chains(existing: &mut TermEntry, candidates: &[InflectionCha
     }
 }
 
-fn merge_text_processor_chains(existing: &mut TermEntry, candidates: &[Vec<String>]) {
+/// _mergeTextProcessorRuleChains into the shared list `target`.
+fn merge_text_processor_chains(tables: &mut ChainTables, target: usize, source: usize) {
+    let candidates = tables.text_processors(source).to_vec();
+    let Some(existing) = tables.text_processors.get_mut(target) else {
+        return;
+    };
     for candidate in candidates {
-        let duplicate = existing
-            .text_processor_rule_chain_candidates
+        if !existing
             .iter()
-            .any(|chain| equal_ignore_order(chain, candidate));
-        if !duplicate {
-            existing
-                .text_processor_rule_chain_candidates
-                .push(candidate.clone());
+            .any(|chain| equal_ignore_order(chain, &candidate))
+        {
+            existing.push(candidate);
         }
     }
 }

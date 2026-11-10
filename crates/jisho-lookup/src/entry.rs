@@ -14,6 +14,9 @@ pub struct FindTermsResult {
     pub entries: Vec<TermEntry>,
     /// Length of the longest matched prefix of the input, in UTF-16 units.
     pub original_text_length: usize,
+    /// True when the matched-rows cap ([`crate::FindTermsOptions::max_hits`])
+    /// left rows out, so results may be incomplete.
+    pub truncated: bool,
 }
 
 /// One result: headwords with their definitions.

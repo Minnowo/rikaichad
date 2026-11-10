@@ -374,7 +374,11 @@ fn bulk_lookup_claims_rows_like_indexeddb() {
         "食べる".to_string(),
         "ご飯".to_string(),
     ];
-    let bulk = store.find_terms_bulk(&texts, 100).unwrap();
+    let (bulk, truncated) = store.find_terms_bulk(&texts, 100).unwrap();
+    assert!(!truncated);
+    let (capped, truncated) = store.find_terms_bulk(&texts, 1).unwrap();
+    assert_eq!(capped.len(), 1);
+    assert!(truncated, "hitting the cap is reported");
     let claims: Vec<(&str, usize, MatchSource)> = bulk
         .iter()
         .map(|b| (b.hit.term.as_str(), b.item_index, b.match_source))
@@ -400,4 +404,27 @@ fn import(
 ) -> Result<jisho_store::ImportReport, StoreError> {
     let path = dir.write(name, &zip);
     store.import(&path, &Limits::default(), &mut |_| {})
+}
+
+#[test]
+fn store_from_another_schema_version_is_refused_with_advice() {
+    let dir = TempDir::new("store-version");
+    let path = dir.path().join("store.sqlite");
+    drop(Store::open(&path).unwrap());
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute(
+        "UPDATE meta SET value = '1' WHERE key = 'store_version'",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+    let err = Store::open(&path).err().unwrap();
+    assert!(
+        matches!(err, StoreError::UnsupportedStoreVersion { found: 1, .. }),
+        "{err}"
+    );
+    assert!(
+        err.to_string().contains("import your dictionaries again"),
+        "{err}"
+    );
 }

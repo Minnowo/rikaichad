@@ -25,8 +25,9 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 
 use crate::error::StoreError;
 
-/// Schema version written by this build.
-pub const STORE_VERSION: i64 = 1;
+/// Schema version written by this build. 2: `terms.form_of` and
+/// `terms.content_count` (milestone 2).
+pub const STORE_VERSION: i64 = 2;
 
 const CREATE: &str = "
 CREATE TABLE meta (
