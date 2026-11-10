@@ -2,7 +2,8 @@
 //! Store portability across operating systems. CI runs the writer on
 //! Linux and the reader on macOS and Windows against the same file (see
 //! .github/workflows/ci.yml). Ignored by default: they need
-//! `JISHO_PORTABLE_STORE` to name the store file.
+//! `JISHO_PORTABLE_STORE` to name the store file. scripts/check.sh runs
+//! both on one machine so they stay in step with the output format.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -54,8 +55,9 @@ fn read_portable_store() {
         String::from_utf8_lossy(&out.stderr)
     );
     let body: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(body["entries"][0]["dictionary"]["title"], "Portable");
-    assert_eq!(body["entries"][0]["glossary_text"][1], "to consume");
+    let definition = &body["entries"][0]["definitions"][0];
+    assert_eq!(definition["dictionary"]["title"], "Portable");
+    assert_eq!(definition["glossary_text"][1], "to consume");
 }
 
 fn store_path() -> PathBuf {

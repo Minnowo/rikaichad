@@ -62,6 +62,12 @@ if [ -z "$passed" ] || [ "$passed" -eq 0 ]; then
     exit 1
 fi
 echo "tests passed: $passed"
+# The store portability pair is ignored by default (CI runs it across
+# operating systems); run it here on one machine so it cannot go stale.
+portable_dir=$(mktemp -d)
+JISHO_PORTABLE_STORE="$portable_dir/portable.sqlite" cargo test -q -p jisho --test portable_store --locked -- --ignored --exact write_portable_store
+JISHO_PORTABLE_STORE="$portable_dir/portable.sqlite" cargo test -q -p jisho --test portable_store --locked -- --ignored --exact read_portable_store
+rm -rf "$portable_dir"
 
 step "ascii"
 ascii_files=()
