@@ -4,3 +4,5 @@
 # Read-only upstream clones used as porting references.
 /reference-src/
 __pycache__/
+# Public test corpus, downloaded by scripts/fetch-corpus.sh; never commit.
+/corpus/

@@ -384,6 +384,13 @@ live in `term_glossaries` and are loaded only for returned entries.
 Prefix-only scans are a lower bound; milestone 2 adds deinflection
 candidates and re-measures against the targets.
 
+Public corpus (`scripts/fetch-corpus.sh`: JMdict English and KANJIDIC
+English, jmdict-yomitan release 2026-11-09, sha256-pinned): imports in
+6.2 s (527,699 terms, 10,384 kanji), 80 MB peak, 223 MB store; prefix
+scans p50 0.11 ms / p99 0.30 ms to match, p50 0.24 ms / p99 0.88 ms with
+glossaries. Jitendex is not in the corpus: its GitHub releases stopped in
+2024 without downloadable assets.
+
 Open: glossary compression (store is 65% of raw JSON) and import speed
 into a large existing store; neither is needed for the targets now.
 

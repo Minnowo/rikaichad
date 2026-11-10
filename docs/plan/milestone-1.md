@@ -48,7 +48,7 @@ at the pinned commit:
 9.  [x] jisho-api + `serve`: `POST /v1/terms/lookup`, `--bind`,
         `--read-only`, Host/Origin checks, caps.
 10. [x] `bench`: import time, peak RSS, store size, probe latency.
-11. [~] Run on the public corpus and the user's collection; record
+11. [x] Run on the public corpus and the user's collection; record
         numbers in brief section 5; tune.
 12. [~] CI workflow for Linux/macOS/Windows.
 13. [ ] Independent review of the milestone diff; fix findings.
@@ -70,7 +70,7 @@ at the pinned commit:
 
 ## Status notes
 
-- 11: user collection done and recorded. Public corpus (Jitendex,
-  KANJIDIC Yomitan builds at pinned URLs) not yet downloaded.
+- 11: user collection and public corpus (scripts/fetch-corpus.sh) done
+  and recorded in brief section 5.
 - 12: workflow written; it has not run yet because the repository has no
   remote. The cross-OS portability tests pass locally on Linux only.
