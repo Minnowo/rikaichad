@@ -1,0 +1,5 @@
+/target/
+# Private user dictionaries (many are commercial); never commit.
+/dictionaries/
+# Read-only upstream clones used as porting references.
+/reference-src/

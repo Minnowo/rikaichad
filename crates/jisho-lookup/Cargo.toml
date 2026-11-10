@@ -1,0 +1,11 @@
+[package]
+name = "jisho-lookup"
+description = "Term and kanji lookup ported from Yomitan's translator: scanning, deinflection, validation, ranking and grouping."
+license = "AGPL-3.0-or-later AND GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

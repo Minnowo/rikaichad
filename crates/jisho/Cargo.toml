@@ -1,0 +1,14 @@
+[package]
+name = "jisho"
+description = "Japanese dictionary CLI and HTTP API that reads Yomitan dictionaries."
+license = "AGPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+lexopt = "0.3.2"
+
+[lints]
+workspace = true

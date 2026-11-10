@@ -1,0 +1,14 @@
+jisho
+Copyright (C) 2026 jisho contributors
+Licensed under the GNU Affero General Public License v3.0 or later
+(see LICENSE).
+
+Parts of this program are ported from Yomitan
+(https://github.com/yomidevs/yomitan), Copyright (C) Yomitan Authors and
+Yomichan Authors, licensed under the GNU General Public License v3.0 or
+later. As permitted by section 13 of the GNU GPL v3, those parts remain
+under GPL-3.0-or-later and are combined with this AGPL-3.0-or-later work.
+
+Ported files (path in this repository, upstream path, upstream commit):
+
+(none yet)

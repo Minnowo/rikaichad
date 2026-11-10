@@ -1,0 +1,11 @@
+[package]
+name = "jisho-store"
+description = "Single-file SQLite store for imported dictionaries: streaming import and lookup queries."
+license = "AGPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

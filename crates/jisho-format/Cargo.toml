@@ -1,0 +1,11 @@
+[package]
+name = "jisho-format"
+description = "Parsing and validation of Yomitan dictionary zips (index, banks, structured content), with caps for hostile input."
+license = "AGPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
