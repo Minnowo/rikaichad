@@ -5,8 +5,10 @@
 //! top-level array is visited element by element and each row is handed to
 //! a callback, keeping memory bounded by one row.
 
+use std::cell::Cell;
 use std::fmt;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{self, BufRead, BufReader, Read};
+use std::rc::Rc;
 
 use serde::Deserializer as _;
 use serde::de::{self, DeserializeOwned, SeqAccess, Visitor};
@@ -18,12 +20,19 @@ const UTF8_BOM: &[u8] = b"\xef\xbb\xbf";
 
 /// Parses the JSON array in `reader` and calls `on_row` for each element,
 /// in order. `name` is the archive entry name, used in error messages.
+/// A row whose JSON is longer than `max_row_bytes` fails the parse as soon
+/// as the limit is passed, before the row is complete in memory.
 ///
 /// Returns the number of rows. Stops at the first error: invalid JSON, a
 /// row that does not deserialize as `T` (the message names the row and
 /// field) or trailing data after the array (all as `E::from(FormatError)`),
 /// or an error returned by `on_row`, which is passed through unchanged.
-pub fn stream_rows<T, E, F>(reader: &mut dyn Read, name: &str, on_row: F) -> Result<u64, E>
+pub fn stream_rows<T, E, F>(
+    reader: &mut dyn Read,
+    name: &str,
+    max_row_bytes: u64,
+    on_row: F,
+) -> Result<u64, E>
 where
     T: DeserializeOwned,
     E: From<FormatError>,
@@ -31,11 +40,21 @@ where
 {
     let mut buffered = BufReader::with_capacity(BUFFER_BYTES, reader);
     skip_bom(&mut buffered).map_err(|e| E::from(json_error(name, &e.to_string())))?;
-    let mut deserializer = serde_json::Deserializer::from_reader(buffered);
+    let consumed = Rc::new(Cell::new(0u64));
+    let row_start = Rc::new(Cell::new(0u64));
+    let capped = RowCappedReader {
+        inner: buffered,
+        consumed: Rc::clone(&consumed),
+        row_start: Rc::clone(&row_start),
+        max_row_bytes,
+    };
+    let mut deserializer = serde_json::Deserializer::from_reader(capped);
     let mut aborted = None;
     let visitor = RowsVisitor {
         on_row,
         aborted: &mut aborted,
+        consumed,
+        row_start,
         marker: std::marker::PhantomData,
     };
     let result = deserializer.deserialize_seq(visitor);
@@ -57,7 +76,36 @@ struct RowsVisitor<'a, T, E, F> {
     /// Set when `on_row` fails, so its error survives the trip through
     /// serde's error type.
     aborted: &'a mut Option<E>,
+    /// Bytes read so far and where the current row started, shared with
+    /// the [`RowCappedReader`].
+    consumed: Rc<Cell<u64>>,
+    row_start: Rc<Cell<u64>>,
     marker: std::marker::PhantomData<T>,
+}
+
+/// Counts bytes handed to the JSON parser and fails once the current row
+/// (since the visitor last moved `row_start`) is over `max_row_bytes`.
+struct RowCappedReader<R> {
+    inner: R,
+    consumed: Rc<Cell<u64>>,
+    row_start: Rc<Cell<u64>>,
+    max_row_bytes: u64,
+}
+
+impl<R: Read> Read for RowCappedReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let in_row = self.consumed.get().saturating_sub(self.row_start.get());
+        if in_row > self.max_row_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("row is larger than {} bytes", self.max_row_bytes),
+            ));
+        }
+        let n = self.inner.read(buf)?;
+        self.consumed
+            .set(self.consumed.get().saturating_add(n as u64));
+        Ok(n)
+    }
 }
 
 impl<'de, T, E, F> Visitor<'de> for RowsVisitor<'_, T, E, F>
@@ -79,6 +127,7 @@ where
                 Ok(None) => return Ok(count),
                 Err(e) => return Err(de::Error::custom(format!("row {count}: {e}"))),
             };
+            self.row_start.set(self.consumed.get());
             if let Err(err) = (self.on_row)(row) {
                 *self.aborted = Some(err);
                 return Err(de::Error::custom("aborted by row handler"));
@@ -114,6 +163,7 @@ mod tests {
         stream_rows(
             &mut reader,
             "tag_bank_1.json",
+            1 << 20,
             |row: TagRow| -> Result<(), FormatError> {
                 rows.push(row);
                 Ok(())
@@ -153,6 +203,7 @@ mod tests {
         let err = stream_rows(
             &mut reader,
             "t",
+            1 << 20,
             |_row: TagRow| -> Result<(), FormatError> { Err(FormatError::MissingIndex) },
         )
         .unwrap_err();

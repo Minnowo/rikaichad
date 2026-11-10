@@ -7,7 +7,7 @@ use jisho_api::{DictionaryJson, DictionaryListResponse};
 use lexopt::prelude::*;
 
 use super::Context;
-use crate::output::{CliError, out, out_json};
+use crate::output::{CliError, out, out_json, printable};
 
 pub const USAGE: &str = "\
 Usage: jisho list [--json]
@@ -66,6 +66,6 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     if dictionaries.is_empty() {
         text.push_str("no dictionaries imported; use `jisho import <zip>`\n");
     }
-    out(&text)?;
+    out(&printable(&text))?;
     Ok(ExitCode::SUCCESS)
 }

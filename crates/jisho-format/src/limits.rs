@@ -18,6 +18,10 @@ pub struct Limits {
     pub max_bank_bytes: u64,
     /// Maximum total uncompressed size of all bank files, in bytes.
     pub max_total_bank_bytes: u64,
+    /// Maximum JSON size of one bank row, in bytes, enforced while reading
+    /// so an oversized row never gets fully into memory. The largest real
+    /// glossary seen is 527 KB (docs/dictionary-survey.md).
+    pub max_row_bytes: u64,
     /// Maximum length of a term, reading, kanji character or tag name, in
     /// bytes. These become index keys in the store. The longest seen in a
     /// real dictionary is 9,893 bytes (a Babylon phrase entry).
@@ -32,6 +36,7 @@ impl Default for Limits {
             max_styles_bytes: 8 << 20,
             max_bank_bytes: 1 << 30,
             max_total_bank_bytes: 64 << 30,
+            max_row_bytes: 16 << 20,
             max_key_bytes: 64 * 1024,
         }
     }

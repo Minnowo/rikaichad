@@ -68,6 +68,32 @@ pub fn request(
     parse(&raw)
 }
 
+/// Writes `bytes` as-is, then reads until the server closes the connection
+/// or `wait` passes. Returns what was read and how long it took.
+pub fn raw(addr: SocketAddr, bytes: &[u8], wait: Duration) -> (Vec<u8>, Duration) {
+    let started = std::time::Instant::now();
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream.set_read_timeout(Some(wait)).unwrap();
+    stream.write_all(bytes).unwrap();
+    let mut out = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => out.extend_from_slice(&chunk[..n]),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => break,
+            Err(e) => panic!("read failed: {e}"),
+        }
+    }
+    (out, started.elapsed())
+}
+
 /// POSTs `json` with `Content-Type: application/json`.
 pub fn post_json(addr: SocketAddr, path: &str, json: &str) -> HttpResponse {
     request(

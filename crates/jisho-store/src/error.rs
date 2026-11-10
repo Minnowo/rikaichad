@@ -33,6 +33,8 @@ pub enum StoreError {
     UnsupportedStoreVersion { found: i64, supported: i64 },
     /// The store is opened read-only and the operation would write.
     ReadOnly,
+    /// The query passed the deadline set with `Store::set_deadline`.
+    Interrupted,
 }
 
 impl fmt::Display for StoreError {
@@ -65,6 +67,7 @@ impl fmt::Display for StoreError {
                 "store version {found} is older than this jisho uses ({supported}); rebuild it with `jisho reimport --all`"
             ),
             StoreError::ReadOnly => write!(f, "the store is open read-only"),
+            StoreError::Interrupted => write!(f, "the query took too long and was stopped"),
         }
     }
 }
@@ -87,6 +90,12 @@ impl From<rusqlite::Error> for StoreError {
         }
         if is_read_only(&err) {
             return StoreError::ReadOnly;
+        }
+        if matches!(
+            err.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::OperationInterrupted)
+        ) {
+            return StoreError::Interrupted;
         }
         StoreError::Sqlite(err)
     }

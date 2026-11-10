@@ -391,6 +391,11 @@ scans p50 0.11 ms / p99 0.30 ms to match, p50 0.24 ms / p99 0.88 ms with
 glossaries. Jitendex is not in the corpus: its GitHub releases stopped in
 2024 without downloadable assets.
 
+After the review fixes (row-size cap while parsing, LIMIT on matching,
+deadline checks): JMdict import 7.2 s (was 6.1 s, the per-byte row
+counter); full-store scans p50 0.71 ms / p99 4.4-5.0 ms to match and p50
+2.05 ms / p99 5.8-6.7 ms with glossaries (3 runs).
+
 Open: glossary compression (store is 65% of raw JSON) and import speed
 into a large existing store; neither is needed for the targets now.
 

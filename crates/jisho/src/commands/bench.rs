@@ -33,6 +33,8 @@ with nothing else busy.
 const DEFAULT_SENTENCES: &str = "bench/sentences.txt";
 const DEFAULT_MAX_LENGTH: usize = 16;
 const DEFAULT_LIMIT: usize = 100;
+/// Cap on matched rows per scan, far above what a real scan matches.
+const MAX_HITS: usize = 100_000;
 
 pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliError> {
     let mut sentences = PathBuf::from(DEFAULT_SENTENCES);
@@ -71,7 +73,7 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
 
     // Warm the page cache so every pass sees the same state.
     for scan in &scans {
-        let mut hits = store.find_terms(scan)?;
+        let mut hits = store.find_terms(scan, MAX_HITS)?;
         hits.truncate(limit);
         store.with_glossaries(hits)?;
     }
@@ -80,14 +82,14 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
     let mut matched = 0usize;
     for scan in &scans {
         let start = Instant::now();
-        matched += store.find_terms(scan)?.len();
+        matched += store.find_terms(scan, MAX_HITS)?.len();
         match_only.push(start.elapsed());
     }
 
     let mut with_glossaries = Vec::with_capacity(scans.len());
     for scan in &scans {
         let start = Instant::now();
-        let mut hits = store.find_terms(scan)?;
+        let mut hits = store.find_terms(scan, MAX_HITS)?;
         hits.truncate(limit);
         store.with_glossaries(hits)?;
         with_glossaries.push(start.elapsed());
@@ -136,7 +138,7 @@ fn build_scans(text: &str, max_length: usize) -> Vec<Vec<String>> {
             if first.is_whitespace() || is_punctuation(*first) {
                 continue;
             }
-            let end = (start + max_length).min(chars.len());
+            let end = start.saturating_add(max_length).min(chars.len());
             let window = chars.get(start..end).unwrap_or_default();
             let scan: Vec<String> = (1..=window.len())
                 .map(|n| window.iter().take(n).collect())
@@ -208,6 +210,11 @@ mod tests {
                 vec!["c".to_string()],
             ]
         );
+    }
+
+    #[test]
+    fn huge_max_length_does_not_overflow() {
+        assert_eq!(build_scans("ab", usize::MAX).len(), 2);
     }
 
     #[test]

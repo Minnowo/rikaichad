@@ -11,9 +11,7 @@ use crate::response::json_response;
 use crate::state::AppState;
 
 pub async fn dictionaries_list(State(state): State<AppState>) -> Result<Response, ApiError> {
-    let infos = state
-        .blocking(|pool| pool.with_store(|store| Ok::<_, ApiError>(store.dictionaries()?)))
-        .await?;
+    let infos = state.store_work(|store| Ok(store.dictionaries()?)).await?;
     let response = DictionaryListResponse {
         dictionaries: infos.into_iter().map(DictionaryJson::from_info).collect(),
     };

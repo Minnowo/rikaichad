@@ -68,8 +68,24 @@ impl Archive<BufReader<File>> {
 }
 
 impl<R: Read + Seek> Archive<R> {
-    /// Reads the central directory from `reader`.
-    pub fn from_reader(reader: R, limits: Limits) -> Result<Self, FormatError> {
+    /// Reads the central directory from `reader`. The entry count is checked
+    /// against `limits.max_entries` from the end-of-central-directory record
+    /// before the directory itself is parsed, so a huge directory is
+    /// rejected without being loaded.
+    pub fn from_reader(mut reader: R, limits: Limits) -> Result<Self, FormatError> {
+        if let Some(declared) =
+            declared_entry_count(&mut reader).map_err(|source| FormatError::Io {
+                context: "cannot read zip directory".to_string(),
+                source,
+            })?
+            && declared > limits.max_entries as u64
+        {
+            return Err(FormatError::Limit {
+                what: "number of zip entries".to_string(),
+                limit: limits.max_entries as u64,
+                actual: declared,
+            });
+        }
         let zip = ZipArchive::new(reader)?;
         if zip.len() > limits.max_entries {
             return Err(FormatError::Limit {
@@ -213,6 +229,64 @@ impl<R: Read + Seek> Archive<R> {
             Ok(text)
         })
     }
+}
+
+/// Signature of the end-of-central-directory record (APPNOTE 4.3.16).
+const EOCD_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
+/// Signature of the zip64 end-of-central-directory locator (4.3.15).
+const ZIP64_LOCATOR_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x06, 0x07];
+/// Signature of the zip64 end-of-central-directory record (4.3.14).
+const ZIP64_EOCD_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x06, 0x06];
+/// Fixed EOCD size plus the largest possible comment.
+const EOCD_SEARCH_BYTES: u64 = 22 + 65_535;
+
+/// Reads the total entry count from the end-of-central-directory record
+/// (or its zip64 version), then rewinds. Returns `None` when no record is
+/// found; the zip parser then reports the archive as invalid.
+fn declared_entry_count<R: Read + Seek>(reader: &mut R) -> io::Result<Option<u64>> {
+    let len = reader.seek(io::SeekFrom::End(0))?;
+    let start = len.saturating_sub(EOCD_SEARCH_BYTES);
+    reader.seek(io::SeekFrom::Start(start))?;
+    let mut tail = Vec::new();
+    reader.take(EOCD_SEARCH_BYTES).read_to_end(&mut tail)?;
+    reader.seek(io::SeekFrom::Start(0))?;
+
+    let Some(pos) = tail.windows(4).rposition(|w| w == EOCD_SIGNATURE) else {
+        return Ok(None);
+    };
+    let Some(count) = tail
+        .get(pos + 10..pos + 12)
+        .and_then(|b| <[u8; 2]>::try_from(b).ok())
+    else {
+        return Ok(None);
+    };
+    let count = u16::from_le_bytes(count);
+    if count != u16::MAX {
+        return Ok(Some(u64::from(count)));
+    }
+    // 0xFFFF means "see the zip64 record", found through the locator just
+    // before the EOCD.
+    let Some(locator) = pos.checked_sub(20).and_then(|at| tail.get(at..pos)) else {
+        return Ok(Some(u64::from(count)));
+    };
+    if locator.get(..4) != Some(&ZIP64_LOCATOR_SIGNATURE[..]) {
+        return Ok(Some(u64::from(count)));
+    }
+    let Some(offset) = locator.get(8..16).and_then(|b| <[u8; 8]>::try_from(b).ok()) else {
+        return Ok(None);
+    };
+    reader.seek(io::SeekFrom::Start(u64::from_le_bytes(offset)))?;
+    let mut record = [0u8; 40];
+    let read = reader.read(&mut record)?;
+    reader.seek(io::SeekFrom::Start(0))?;
+    if read < record.len() || record.get(..4) != Some(&ZIP64_EOCD_SIGNATURE[..]) {
+        return Ok(None);
+    }
+    let total = record
+        .get(32..40)
+        .and_then(|b| <[u8; 8]>::try_from(b).ok())
+        .map(u64::from_le_bytes);
+    Ok(total)
 }
 
 /// Reader that yields exactly `remaining` bytes from `inner`, computing their

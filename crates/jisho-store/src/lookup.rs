@@ -20,20 +20,28 @@ impl Store {
     /// dictionaries, ordered by dictionary priority then import order, at
     /// most `limit` of them, with glossaries.
     pub fn lookup_exact(&self, text: &str, limit: usize) -> Result<Vec<TermRecord>, StoreError> {
-        let mut hits = self.find_terms(&[text.to_string()])?;
-        hits.truncate(limit);
+        let hits = self.find_terms(&[text.to_string()], limit)?;
         self.with_glossaries(hits)
     }
 
     /// Terms whose expression or reading equals any of `texts`, from enabled
     /// dictionaries, ordered by dictionary priority then import order,
-    /// without glossaries. Duplicate texts are fine. This is the query a
-    /// scan issues for all of its candidate strings at once.
-    pub fn find_terms(&self, texts: &[String]) -> Result<Vec<TermHit>, StoreError> {
+    /// without glossaries, at most `max_hits` of them. Duplicate texts are
+    /// fine. This is the query a scan issues for all of its candidate
+    /// strings at once.
+    pub fn find_terms(
+        &self,
+        texts: &[String],
+        max_hits: usize,
+    ) -> Result<Vec<TermHit>, StoreError> {
+        let limit = i64::try_from(max_hits).unwrap_or(i64::MAX);
         let mut hits = Vec::new();
         for batch in texts.chunks(MAX_BATCH) {
             let mut stmt = self.conn.prepare(&find_terms_sql(batch.len()))?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(batch.iter()), read_hit)?;
+            let mut params: Vec<&dyn rusqlite::ToSql> =
+                batch.iter().map(|t| t as &dyn rusqlite::ToSql).collect();
+            params.push(&limit);
+            let rows = stmt.query_map(params.as_slice(), read_hit)?;
             for row in rows {
                 hits.push(row?);
             }
@@ -41,8 +49,49 @@ impl Store {
         if texts.len() > MAX_BATCH {
             hits.sort_by_key(|h| (h.dictionary_priority, h.id));
             hits.dedup_by_key(|h| h.id);
+            hits.truncate(max_hits);
         }
         Ok(hits)
+    }
+
+    /// Like [`Store::with_glossaries`], but stops before the total glossary
+    /// size (stored JSON bytes) would exceed `max_bytes`. Sizes are read
+    /// before any glossary is loaded, so an over-budget glossary never gets
+    /// into memory. Returns the records and whether any hit was dropped.
+    pub fn with_glossaries_within(
+        &self,
+        hits: Vec<TermHit>,
+        max_bytes: usize,
+    ) -> Result<(Vec<TermRecord>, bool), StoreError> {
+        let ids: Vec<i64> = hits.iter().map(|h| h.id).collect();
+        let mut sizes: HashMap<i64, usize> = HashMap::with_capacity(ids.len());
+        for batch in ids.chunks(MAX_BATCH) {
+            let placeholders = vec!["?"; batch.len()].join(", ");
+            let mut stmt = self.conn.prepare(&format!(
+                "SELECT id, length(CAST(glossary AS BLOB)) FROM term_glossaries
+                 WHERE id IN ({placeholders})"
+            ))?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(batch.iter()), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (id, size) = row?;
+                sizes.insert(id, usize::try_from(size).unwrap_or(usize::MAX));
+            }
+        }
+        let total = hits.len();
+        let mut kept = Vec::with_capacity(total);
+        let mut used = 0usize;
+        for hit in hits {
+            let size = sizes.get(&hit.id).copied().unwrap_or(0);
+            if used.saturating_add(size) > max_bytes {
+                break;
+            }
+            used += size;
+            kept.push(hit);
+        }
+        let truncated = kept.len() < total;
+        Ok((self.with_glossaries(kept)?, truncated))
     }
 
     /// Loads the glossaries of `hits`, keeping their order.
@@ -86,7 +135,8 @@ impl Store {
         let n = n.clamp(1, MAX_BATCH);
         let sql = format!("EXPLAIN QUERY PLAN {}", find_terms_sql(n));
         let mut stmt = self.conn.prepare(&sql)?;
-        let texts: Vec<String> = (0..n).map(|i| format!("x{i}")).collect();
+        let mut texts: Vec<String> = (0..n).map(|i| format!("x{i}")).collect();
+        texts.push("1".to_string());
         let rows = stmt.query_map(rusqlite::params_from_iter(texts.iter()), |row| {
             row.get::<_, String>(3)
         })?;
@@ -99,7 +149,7 @@ impl Store {
 }
 
 /// SQL matching `n` texts; the same placeholders (`?1..?n`) serve both the
-/// expression and the reading lists.
+/// expression and the reading lists, and `?{n+1}` is the row limit.
 fn find_terms_sql(n: usize) -> String {
     let list = (1..=n)
         .map(|i| format!("?{i}"))
@@ -110,7 +160,9 @@ fn find_terms_sql(n: usize) -> String {
                 t.definition_tags, t.rules, t.score, t.sequence, t.term_tags
          FROM terms t JOIN dictionaries d ON d.id = t.dictionary
          WHERE d.enabled AND (t.expression IN ({list}) OR t.reading IN ({list}))
-         ORDER BY d.priority, t.id"
+         ORDER BY d.priority, t.id
+         LIMIT ?{}",
+        n + 1
     )
 }
 

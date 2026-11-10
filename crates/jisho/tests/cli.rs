@@ -87,7 +87,7 @@ fn failed_import_reports_and_continues_with_other_zips() {
     let bad = dir.write("bad.zip", b"not a zip");
     let good = dir.write("good.zip", &fixture::terms_dictionary("Good"));
     let out = jisho_in(&store, &["import", path(&bad), path(&good)]);
-    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.status.code(), Some(2), "errors exit 2");
     let err = stderr(&out);
     assert!(err.contains("bad.zip: invalid zip archive"), "{err}");
     assert!(err.contains("imported \"Good\""), "{err}");
@@ -101,7 +101,7 @@ fn duplicate_import_is_an_error() {
     let zip = dir.write("fixture.zip", &fixture::terms_dictionary("Dup"));
     assert!(jisho_in(&store, &["import", path(&zip)]).status.success());
     let out = jisho_in(&store, &["import", path(&zip)]);
-    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.status.code(), Some(2));
     assert!(
         stderr(&out).contains("already imported"),
         "{}",
@@ -120,6 +120,38 @@ fn store_can_come_from_environment() {
         .unwrap();
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(store.exists());
+}
+
+#[test]
+fn errors_exit_2_and_nothing_found_exits_1() {
+    let dir = TempDir::new("cli-exit");
+    let store = dir.path().join("store.sqlite");
+    let out = jisho_in(&store, &["lookup", "nothing"]);
+    assert_eq!(out.status.code(), Some(1));
+    let out = jisho_in(&store, &["lookup", "--limit", "0", "x"]);
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn dictionary_text_cannot_inject_terminal_escapes() {
+    let dir = TempDir::new("cli-escape");
+    let store = dir.path().join("store.sqlite");
+    let zip = dir.write(
+        "esc.zip",
+        &fixture::dictionary(
+            &fixture::index("Esc\\u001b[2J"),
+            &[(
+                "term_bank_1.json",
+                r#"[["x","x","","",0,["evil\u001b]0;title\u0007 text"],0,""]]"#,
+            )],
+        ),
+    );
+    assert!(jisho_in(&store, &["import", path(&zip)]).status.success());
+    for args in [&["lookup", "x"][..], &["list"][..]] {
+        let text = stdout(&jisho_in(&store, args));
+        assert!(!text.contains('\u{1b}'), "{args:?}: {text:?}");
+        assert!(!text.contains('\u{7}'), "{args:?}: {text:?}");
+    }
 }
 
 #[test]

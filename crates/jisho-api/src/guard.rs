@@ -66,6 +66,19 @@ impl HostPolicy {
     }
 }
 
+/// Middleware: fails requests (including reading their body) that take
+/// longer than the configured time limit with `503 timeout`.
+pub async fn request_timeout(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    match tokio::time::timeout(state.config.request_timeout, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => crate::state::timeout_error().into_response(),
+    }
+}
+
 /// Middleware: rejects disallowed hosts and origins, answers CORS
 /// preflights for allowed origins, and adds CORS headers to their
 /// responses.
@@ -82,13 +95,19 @@ pub async fn guard(State(state): State<AppState>, request: Request, next: Next) 
         )
         .into_response();
     }
-    let origin = request
-        .headers()
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-    let Some(origin) = origin else {
-        return next.run(request).await;
+    let origin = match request.headers().get(header::ORIGIN) {
+        None => return next.run(request).await,
+        Some(value) => match value.to_str() {
+            Ok(text) => text.to_string(),
+            Err(_) => {
+                return ApiError::new(
+                    StatusCode::FORBIDDEN,
+                    "forbidden_origin",
+                    "Origin header is not valid text",
+                )
+                .into_response();
+            }
+        },
     };
     let allowed = state
         .config

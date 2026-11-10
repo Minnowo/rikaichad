@@ -22,8 +22,12 @@ pub struct ServeConfig {
     pub allowed_origins: Vec<String>,
     /// Extra `Host` header names accepted (see docs/api.md "Browser access").
     pub allowed_hosts: Vec<String>,
-    /// Time limit per request.
+    /// Time limit per request, including reading its body.
     pub request_timeout: Duration,
+    /// Most connections open at once.
+    pub max_connections: usize,
+    /// A connection without reads or writes for this long is closed.
+    pub idle_timeout: Duration,
     /// Cap on JSON request bodies, in bytes.
     pub max_json_body: usize,
     /// Cap on serialized result entries per response, in bytes.
@@ -40,6 +44,8 @@ impl ServeConfig {
             allowed_origins: Vec::new(),
             allowed_hosts: Vec::new(),
             request_timeout: Duration::from_secs(10),
+            max_connections: 64,
+            idle_timeout: Duration::from_secs(30),
             max_json_body: 64 * 1024,
             max_response_bytes: 16 * 1024 * 1024,
         }

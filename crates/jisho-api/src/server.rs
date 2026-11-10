@@ -9,10 +9,11 @@ use axum::Router;
 use axum::routing::{get, post};
 
 use crate::config::ServeConfig;
-use crate::guard::{HostPolicy, guard};
+use crate::guard::{HostPolicy, guard, request_timeout};
 use crate::handlers::{dictionaries_list, fallback, health, terms_lookup};
+use crate::listener::GuardedListener;
 use crate::state::AppState;
-use crate::store_pool::StorePool;
+use crate::store_pool::{MAX_IDLE, StorePool};
 
 /// Why the server could not start or stopped with an error.
 #[derive(Debug)]
@@ -39,6 +40,7 @@ pub fn router(config: ServeConfig) -> Result<Router, ServerError> {
         host_policy: Arc::new(HostPolicy::from_config(&config)),
         config: Arc::new(config),
         pool,
+        store_permits: Arc::new(tokio::sync::Semaphore::new(MAX_IDLE)),
     };
     Ok(Router::new()
         .route("/v1/health", get(health::health))
@@ -49,6 +51,10 @@ pub fn router(config: ServeConfig) -> Result<Router, ServerError> {
         )
         .fallback(fallback::not_found)
         .method_not_allowed_fallback(fallback::method_not_allowed)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            request_timeout,
+        ))
         .layer(axum::middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state))
 }
@@ -66,6 +72,8 @@ pub fn run(config: ServeConfig, on_ready: impl FnOnce(SocketAddr)) -> Result<(),
             message: format!("cannot start async runtime: {e}"),
         })?;
     let bind = config.bind;
+    let max_connections = config.max_connections;
+    let idle_timeout = config.idle_timeout;
     let app = router(config)?;
     runtime.block_on(async move {
         let listener = tokio::net::TcpListener::bind(bind)
@@ -77,6 +85,7 @@ pub fn run(config: ServeConfig, on_ready: impl FnOnce(SocketAddr)) -> Result<(),
             message: format!("cannot read listening address: {e}"),
         })?;
         on_ready(local);
+        let listener = GuardedListener::new(listener, max_connections, idle_timeout);
         axum::serve(listener, app)
             .with_graceful_shutdown(async {
                 // If the signal handler cannot be installed, run until killed.

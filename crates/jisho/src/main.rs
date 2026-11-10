@@ -30,6 +30,8 @@ Commands:
   serve             Run the HTTP API
   bench             Measure lookup latency on the current store
 
+Exit status: 0 success, 1 nothing found (lookup), 2 error.
+
 Options:
   --store PATH      Store file (default: $JISHO_STORE, else the platform
                     data directory, e.g. ~/.local/share/jisho/jisho.sqlite)
@@ -37,12 +39,16 @@ Options:
   -V, --version     Print the version
 ";
 
+/// Exit status for errors. Status 1 is reserved for "nothing found" from
+/// `lookup` (like grep), so scripts can tell the two apart.
+const ERROR_EXIT: u8 = 2;
+
 fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(err) => {
             log("", &err.message);
-            ExitCode::FAILURE
+            ExitCode::from(ERROR_EXIT)
         }
     }
 }

@@ -70,7 +70,9 @@ impl Store {
             tx.execute(&format!("DELETE FROM {table} WHERE dictionary = ?1"), [id])?;
         }
         tx.commit()?;
-        self.checkpoint()?;
+        // Committed. An incomplete or failed checkpoint is not a failure of
+        // the removal: SQLite checkpoints the WAL later on its own.
+        let _ = self.checkpoint();
         Ok(())
     }
 }

@@ -59,10 +59,15 @@ pub async fn terms_lookup(
     let text = request.text;
     let max_bytes = state.config.max_response_bytes;
     let response = state
-        .blocking(move |pool| {
-            let records =
-                pool.with_store(|store| Ok::<_, ApiError>(store.lookup_exact(&text, limit + 1)?))?;
-            Ok(lookup_response(&text, records, limit, max_bytes))
+        .store_work(move |store| {
+            // One extra hit tells whether `limit` cut the results.
+            let mut hits = store.find_terms(std::slice::from_ref(&text), limit + 1)?;
+            let over_limit = hits.len() > limit;
+            hits.truncate(limit);
+            let (records, over_budget) = store.with_glossaries_within(hits, max_bytes)?;
+            let mut response = lookup_response(&text, records, limit, max_bytes);
+            response.truncated |= over_limit || over_budget;
+            Ok(response)
         })
         .await?;
     Ok(json_response(StatusCode::OK, &response))

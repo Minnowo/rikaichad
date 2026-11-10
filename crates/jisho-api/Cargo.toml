@@ -13,7 +13,7 @@ jisho-format = { path = "../jisho-format" }
 jisho-store = { path = "../jisho-store" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", default-features = false, features = ["net", "rt-multi-thread", "time", "signal"] }
+tokio = { version = "1", default-features = false, features = ["net", "rt-multi-thread", "time", "signal", "sync"] }
 
 [dev-dependencies]
 jisho-testkit = { path = "../jisho-testkit" }

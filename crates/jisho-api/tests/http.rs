@@ -6,11 +6,12 @@
 
 use std::net::SocketAddr;
 use std::sync::mpsc;
+use std::time::Duration;
 
 use jisho_api::ServeConfig;
 use jisho_format::Limits;
 use jisho_store::Store;
-use jisho_testkit::http::{post_json, request};
+use jisho_testkit::http::{post_json, raw, request};
 use jisho_testkit::{TempDir, fixture};
 
 /// Starts a server on an ephemeral loopback port with a store holding the
@@ -228,4 +229,58 @@ fn origins_are_checked_and_allowed_ones_get_cors() {
             .unwrap()
             .contains("POST")
     );
+}
+
+#[test]
+fn slow_request_body_times_out() {
+    let dir = TempDir::new("http-slow-body");
+    let addr = start(&dir, |c| c.request_timeout = Duration::from_secs(1));
+    // Promise 100 bytes, send 10, then wait: the request must fail with
+    // 503 at the time limit instead of holding the connection.
+    let head = format!(
+        "POST /v1/terms/lookup HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\n\
+         Content-Length: 100\r\nConnection: close\r\n\r\n{{\"text\":\"a"
+    );
+    let (out, took) = raw(addr, head.as_bytes(), Duration::from_secs(5));
+    let text = String::from_utf8_lossy(&out);
+    assert!(text.starts_with("HTTP/1.1 503"), "{text}");
+    assert!(text.contains("\"timeout\""), "{text}");
+    assert!(took < Duration::from_secs(4), "took {took:?}");
+}
+
+#[test]
+fn silent_connection_is_closed_after_idle_timeout() {
+    let dir = TempDir::new("http-idle");
+    let addr = start(&dir, |c| c.idle_timeout = Duration::from_secs(1));
+    let (out, took) = raw(addr, b"", Duration::from_secs(5));
+    assert!(out.is_empty(), "{}", String::from_utf8_lossy(&out));
+    assert!(
+        took < Duration::from_secs(4),
+        "connection stayed open {took:?}"
+    );
+}
+
+#[test]
+fn non_text_origin_is_rejected() {
+    let dir = TempDir::new("http-bad-origin");
+    let addr = start(&dir, |_| {});
+    let mut req = format!("GET /v1/health HTTP/1.1\r\nHost: {addr}\r\nOrigin: ").into_bytes();
+    req.extend_from_slice(b"http://\xff\xfe\r\nConnection: close\r\n\r\n");
+    let (out, _) = raw(addr, &req, Duration::from_secs(5));
+    let text = String::from_utf8_lossy(&out);
+    assert!(text.starts_with("HTTP/1.1 403"), "{text}");
+    assert!(text.contains("forbidden_origin"), "{text}");
+}
+
+#[test]
+fn oversized_content_length_is_rejected_before_reading() {
+    let dir = TempDir::new("http-big-cl");
+    let addr = start(&dir, |c| c.max_json_body = 1024);
+    let head = format!(
+        "POST /v1/terms/lookup HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\n\
+         Content-Length: 99999999\r\nConnection: close\r\n\r\n"
+    );
+    let (out, _) = raw(addr, head.as_bytes(), Duration::from_secs(5));
+    let text = String::from_utf8_lossy(&out);
+    assert!(text.starts_with("HTTP/1.1 413"), "{text}");
 }

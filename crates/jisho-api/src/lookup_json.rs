@@ -9,6 +9,9 @@ use serde_json::Value;
 
 use crate::text_length::TextLength;
 
+/// Bytes reserved for the response fields around `entries`.
+pub const ENVELOPE_ALLOWANCE: usize = 1024;
+
 /// Response of a term lookup.
 #[derive(Debug, Clone, Serialize)]
 pub struct LookupResponse {
@@ -72,9 +75,10 @@ impl TermEntryJson {
     }
 }
 
-/// Builds a lookup response from `records` (fetched with `limit + 1` so
-/// truncation by `limit` can be detected), keeping at most `limit` entries
-/// and at most `max_bytes` of serialized entries.
+/// Builds a lookup response from `records`, keeping at most `limit`
+/// entries and at most `max_bytes` of serialized response (entries plus
+/// [`ENVELOPE_ALLOWANCE`] for the rest). `truncated` is set when entries were
+/// dropped here; callers that dropped some earlier set it too.
 pub fn lookup_response(
     matched_text: &str,
     records: Vec<TermRecord>,
@@ -83,7 +87,7 @@ pub fn lookup_response(
 ) -> LookupResponse {
     let mut truncated = records.len() > limit;
     let mut entries = Vec::new();
-    let mut bytes = 0usize;
+    let mut bytes = ENVELOPE_ALLOWANCE.saturating_add(matched_text.len().saturating_mul(2));
     for record in records.into_iter().take(limit) {
         let entry = TermEntryJson::from_record(record);
         let size = serde_json::to_vec(&entry).map(|v| v.len()).unwrap_or(0);

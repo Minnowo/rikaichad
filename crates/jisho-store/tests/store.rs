@@ -3,6 +3,8 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
+use std::time::{Duration, Instant};
+
 use jisho_format::Limits;
 use jisho_store::{Counts, Store, StoreError};
 use jisho_testkit::{TempDir, ZipBuilder, fixture};
@@ -101,10 +103,10 @@ fn batched_find_then_glossaries_and_index_use() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let hits = store.find_terms(&texts).unwrap();
+    let hits = store.find_terms(&texts, 100).unwrap();
     let terms: Vec<&str> = hits.iter().map(|r| r.term.as_str()).collect();
     assert_eq!(terms, ["食べる", "ご飯"]);
-    assert!(store.find_terms(&[]).unwrap().is_empty());
+    assert!(store.find_terms(&[], 100).unwrap().is_empty());
     let records = store.with_glossaries(hits).unwrap();
     assert_eq!(records[1].glossary, [json!("cooked rice"), json!("meal")]);
     let plan = store.explain_find_terms(3).unwrap().join("\n");
@@ -219,6 +221,120 @@ fn second_connection_reads_while_first_holds_store() {
     import(&mut writer, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
     let reader = open(&dir);
     assert_eq!(reader.lookup_exact("食べる", 10).unwrap().len(), 1);
+}
+
+#[test]
+fn concurrent_creation_of_a_fresh_store_succeeds() {
+    for round in 0..5 {
+        let dir = TempDir::new(&format!("store-race-{round}"));
+        let path = dir.path().join("store.sqlite");
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let path = path.clone();
+                std::thread::spawn(move || Store::open(&path).map(|_| ()))
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+    }
+}
+
+#[test]
+fn dictionary_ids_are_not_reused_after_removal() {
+    let dir = TempDir::new("store-ids");
+    let mut store = open(&dir);
+    import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    let b = import(&mut store, &dir, "b.zip", fixture::terms_dictionary("B")).unwrap();
+    store.remove(b.id).unwrap();
+    let c = import(&mut store, &dir, "c.zip", fixture::terms_dictionary("C")).unwrap();
+    assert!(c.id > b.id, "id {} reused (removed was {})", c.id, b.id);
+}
+
+#[test]
+fn other_connections_read_during_an_import() {
+    let dir = TempDir::new("store-during");
+    let mut store = open(&dir);
+    import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    let reader = open(&dir);
+    let zip = dir.write("b.zip", &fixture::terms_dictionary("B"));
+    let mut seen_during_import = Vec::new();
+    store
+        .import(&zip, &Limits::default(), &mut |_| {
+            let started = Instant::now();
+            let hits = reader.lookup_exact("食べる", 10).unwrap();
+            seen_during_import.push((hits.len(), started.elapsed()));
+        })
+        .unwrap();
+    assert!(!seen_during_import.is_empty());
+    for (count, took) in seen_during_import {
+        assert_eq!(count, 1, "only the committed dictionary is visible");
+        assert!(took < Duration::from_secs(1), "reader blocked for {took:?}");
+    }
+    assert_eq!(reader.lookup_exact("食べる", 10).unwrap().len(), 2);
+}
+
+#[test]
+fn expired_deadline_interrupts_queries() {
+    let dir = TempDir::new("store-deadline");
+    let mut store = open(&dir);
+    // Enough matching rows that the query runs well past one deadline check.
+    let rows: Vec<String> = (0..5000)
+        .map(|i| format!(r#"["a","a","","",0,["gloss {i}"],{i},""]"#))
+        .collect();
+    let bank = format!("[{}]", rows.join(","));
+    let zip = fixture::dictionary(&fixture::index("Many"), &[("term_bank_1.json", &bank)]);
+    import(&mut store, &dir, "many.zip", zip).unwrap();
+    store.set_deadline(Some(Instant::now())).unwrap();
+    let err = store.lookup_exact("a", 5000).unwrap_err();
+    assert!(matches!(err, StoreError::Interrupted), "{err}");
+    store.set_deadline(None).unwrap();
+    assert_eq!(store.lookup_exact("a", 5000).unwrap().len(), 5000);
+}
+
+#[test]
+fn matching_is_capped_and_glossaries_respect_a_byte_budget() {
+    let dir = TempDir::new("store-caps");
+    let mut store = open(&dir);
+    import(&mut store, &dir, "a.zip", fixture::terms_dictionary("A")).unwrap();
+    import(&mut store, &dir, "b.zip", fixture::terms_dictionary("B")).unwrap();
+    let texts = vec!["食べる".to_string(), "ご飯".to_string()];
+    assert_eq!(store.find_terms(&texts, 10).unwrap().len(), 4);
+    assert_eq!(store.find_terms(&texts, 3).unwrap().len(), 3);
+
+    let hits = store.find_terms(&texts, 10).unwrap();
+    // Each fixture glossary here is about 20-30 bytes of JSON.
+    let (records, truncated) = store.with_glossaries_within(hits.clone(), 40).unwrap();
+    assert_eq!(records.len(), 1);
+    assert!(truncated);
+    let (records, truncated) = store.with_glossaries_within(hits, 1 << 20).unwrap();
+    assert_eq!(records.len(), 4);
+    assert!(!truncated);
+}
+
+#[test]
+fn oversized_row_is_rejected_at_import() {
+    let dir = TempDir::new("store-bigrow");
+    let mut store = open(&dir);
+    let big = "x".repeat(2000);
+    let zip = fixture::dictionary(
+        &fixture::index("Big"),
+        &[(
+            "term_bank_1.json",
+            &format!(r#"[["a","a","","",0,["{big}"],0,""]]"#),
+        )],
+    );
+    let path = dir.write("big.zip", &zip);
+    let limits = Limits {
+        max_row_bytes: 1000,
+        ..Limits::default()
+    };
+    let err = store.import(&path, &limits, &mut |_| {}).unwrap_err();
+    assert!(
+        err.to_string().contains("row is larger than 1000 bytes"),
+        "{err}"
+    );
+    assert!(store.dictionaries().unwrap().is_empty());
 }
 
 fn open(dir: &TempDir) -> Store {

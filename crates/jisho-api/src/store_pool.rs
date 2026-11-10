@@ -6,8 +6,9 @@ use std::sync::{Arc, Mutex};
 
 use jisho_store::{Store, StoreError};
 
-/// Most idle connections kept; more are opened on demand and closed after.
-const MAX_IDLE: usize = 8;
+/// Most idle connections kept. The server never runs more store tasks
+/// than this at once (see `AppState`), so the pool never grows past it.
+pub const MAX_IDLE: usize = 8;
 
 /// Hands out [`Store`] connections to closures and keeps them for reuse.
 /// Cheap to clone (shared inner state).
@@ -43,14 +44,14 @@ impl StorePool {
     /// from a blocking thread).
     pub fn with_store<T, E: From<StoreError>>(
         &self,
-        f: impl FnOnce(&Store) -> Result<T, E>,
+        f: impl FnOnce(&mut Store) -> Result<T, E>,
     ) -> Result<T, E> {
         let idle = self.lock().pop();
-        let store = match idle {
+        let mut store = match idle {
             Some(store) => store,
             None => self.open()?,
         };
-        let result = f(&store);
+        let result = f(&mut store);
         self.put(store);
         result
     }

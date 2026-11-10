@@ -68,6 +68,7 @@ impl From<StoreError> for ApiError {
                 ApiError::new(StatusCode::NOT_FOUND, "not_found", message)
             }
             StoreError::ReadOnly => ApiError::new(StatusCode::FORBIDDEN, "read_only", message),
+            StoreError::Interrupted => crate::state::timeout_error(),
             StoreError::Format(_) | StoreError::InvalidRow { .. } => ApiError::new(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_dictionary",

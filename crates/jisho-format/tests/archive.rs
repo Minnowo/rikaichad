@@ -48,6 +48,7 @@ fn parses_index_and_streams_term_rows() {
             stream_rows(
                 reader,
                 &bank.name,
+                1 << 20,
                 |row: TermRow| -> Result<(), FormatError> {
                     rows.push(row);
                     Ok(())
@@ -198,12 +199,53 @@ fn deeply_nested_structured_content_is_rejected_not_overflowed() {
         r#"[["a","a","","",0,[{{"type":"structured-content","content":{content}}}],0,""]]"#
     );
     let mut reader: &[u8] = bank.as_bytes();
-    let err = stream_rows(&mut reader, "term_bank_1.json", |_row: TermRow| {
+    let err = stream_rows(&mut reader, "term_bank_1.json", 1 << 30, |_row: TermRow| {
         Ok::<(), FormatError>(())
     })
     .unwrap_err()
     .to_string();
     assert!(err.contains("recursion limit"), "{err}");
+}
+
+#[test]
+fn oversized_row_fails_while_reading_not_after() {
+    let big = "x".repeat(4096);
+    let bank = format!(r#"[["a","a","","",0,["ok"],0,""],["b","b","","",0,["{big}"],0,""]]"#);
+    let mut reader: &[u8] = bank.as_bytes();
+    let mut rows = 0;
+    let err = stream_rows(&mut reader, "term_bank_1.json", 1024, |_row: TermRow| {
+        rows += 1;
+        Ok::<(), FormatError>(())
+    })
+    .unwrap_err()
+    .to_string();
+    assert_eq!(rows, 1, "the first row is still delivered");
+    assert!(err.contains("row is larger than 1024 bytes"), "{err}");
+}
+
+#[test]
+fn entry_count_is_checked_before_reading_the_central_directory() {
+    // An end-of-central-directory record claiming 65535 entries with an
+    // empty directory: the cap must trip from the record alone.
+    let mut eocd = Vec::new();
+    eocd.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    eocd.extend_from_slice(&[0, 0, 0, 0]);
+    eocd.extend_from_slice(&0xffffu16.to_le_bytes());
+    eocd.extend_from_slice(&0xffffu16.to_le_bytes());
+    eocd.extend_from_slice(&0u32.to_le_bytes());
+    eocd.extend_from_slice(&0u32.to_le_bytes());
+    eocd.extend_from_slice(&0u16.to_le_bytes());
+    let limits = Limits {
+        max_entries: 1000,
+        ..Limits::default()
+    };
+    let err = Archive::from_reader(Cursor::new(eocd), limits)
+        .err()
+        .unwrap();
+    assert!(
+        matches!(err, FormatError::Limit { actual: 65535, .. }),
+        "{err}"
+    );
 }
 
 fn open(bytes: Vec<u8>) -> Archive<Cursor<Vec<u8>>> {

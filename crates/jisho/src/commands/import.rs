@@ -10,14 +10,14 @@ use jisho_store::Store;
 use lexopt::prelude::*;
 
 use super::Context;
-use crate::output::{CliError, info, progress_done, progress_line, warn};
+use crate::output::{CliError, info, printable, progress_done, progress_line, warn};
 
 pub const USAGE: &str = "\
 Usage: jisho import <ZIP>...
 
 Imports Yomitan dictionary zips (format 3). Each zip is imported in one
 transaction: on error nothing from it is kept, and the remaining zips are
-still imported. Exits with status 1 if any zip failed.
+still imported. Exits with status 2 if any zip failed.
 ";
 
 /// Warnings printed per dictionary before summarizing the rest.
@@ -73,7 +73,7 @@ fn import_one(store: &mut Store, zip: &Path) -> Result<(), CliError> {
     })?;
     progress_done();
     let c = report.counts;
-    info(&format!(
+    info(&printable(&format!(
         "imported {:?} (id {}) in {:.1}s: {} terms, {} term meta, {} kanji, {} kanji meta, {} tags",
         report.title,
         report.id,
@@ -83,9 +83,12 @@ fn import_one(store: &mut Store, zip: &Path) -> Result<(), CliError> {
         c.kanji,
         c.kanji_meta,
         c.tags
-    ));
+    )));
     for warning in report.warnings.iter().take(MAX_WARNINGS_SHOWN) {
-        warn(&format!("{name}: {}: {}", warning.entry, warning.message));
+        warn(&printable(&format!(
+            "{name}: {}: {}",
+            warning.entry, warning.message
+        )));
     }
     if report.warnings.len() > MAX_WARNINGS_SHOWN {
         warn(&format!(

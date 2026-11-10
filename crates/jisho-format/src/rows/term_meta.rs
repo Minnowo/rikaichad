@@ -114,7 +114,7 @@ fn validate_pitch_data(data: &Value) -> Result<(), String> {
         };
         only_keys(pitch, &["position", "nasal", "devoice", "tags"])?;
         match pitch.get("position") {
-            Some(Value::Number(n)) if n.as_u64().is_some() => {}
+            Some(n @ Value::Number(_)) if is_non_negative_integer(n) => {}
             Some(Value::String(s))
                 if !s.is_empty() && s.bytes().all(|b| b == b'H' || b == b'L') => {}
             _ => {
@@ -127,8 +127,8 @@ fn validate_pitch_data(data: &Value) -> Result<(), String> {
         for key in ["nasal", "devoice"] {
             match pitch.get(key) {
                 None => {}
-                Some(Value::Number(n)) if n.as_u64().is_some() => {}
-                Some(Value::Array(items)) if items.iter().all(|i| i.as_u64().is_some()) => {}
+                Some(n @ Value::Number(_)) if is_non_negative_integer(n) => {}
+                Some(Value::Array(items)) if items.iter().all(is_non_negative_integer) => {}
                 Some(_) => {
                     return Err(format!(
                         "pitch \"{key}\" must be a non-negative integer or an array of them"
@@ -160,6 +160,19 @@ fn validate_ipa_data(data: &Value) -> Result<(), String> {
         string_array_at(item, "tags")?;
     }
     Ok(())
+}
+
+/// JSON Schema "integer" with `minimum: 0`: integral numbers, including
+/// forms like `2.0`, as for term sequence numbers.
+fn is_non_negative_integer(value: &Value) -> bool {
+    match value {
+        Value::Number(n) => {
+            n.as_u64().is_some()
+                || n.as_f64()
+                    .is_some_and(|f| f >= 0.0 && f.fract() == 0.0 && f <= 9.0e15)
+        }
+        _ => false,
+    }
 }
 
 fn only_keys(map: &serde_json::Map<String, Value>, allowed: &[&str]) -> Result<(), String> {
@@ -209,6 +222,8 @@ mod tests {
     #[test]
     fn accepts_pitch_and_ipa_shapes() {
         parse(r#"["t","pitch",{"reading":"x","pitches":[{"position":0,"nasal":[],"devoice":[2]},{"position":"LHH","tags":["n"]}]}]"#).unwrap();
+        // JSON Schema "integer" accepts integral floats, as for sequences.
+        parse(r#"["t","pitch",{"reading":"x","pitches":[{"position":2.0,"nasal":1.0,"devoice":[3.0]}]}]"#).unwrap();
         parse(r#"["t","ipa",{"reading":"x","transcriptions":[{"ipa":"a","tags":["t"]}]}]"#)
             .unwrap();
     }
@@ -221,6 +236,7 @@ mod tests {
             r#"["t","freq",{"value":1,"extra":2}]"#,
             r#"["t","freq",true]"#,
             r#"["t","pitch",{"reading":"x","pitches":[{"position":-1}]}]"#,
+            r#"["t","pitch",{"reading":"x","pitches":[{"position":1.5}]}]"#,
             r#"["t","pitch",{"reading":"x","pitches":[{"position":"HX"}]}]"#,
             r#"["t","pitch",{"pitches":[]}]"#,
             r#"["t","ipa",{"reading":"x","transcriptions":[{"tags":[]}]}]"#,

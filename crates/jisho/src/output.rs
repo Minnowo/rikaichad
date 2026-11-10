@@ -90,3 +90,30 @@ pub fn progress_done() {
         let _ = stderr.flush();
     }
 }
+
+/// Replaces control characters (other than newline and tab) with U+FFFD so
+/// text from untrusted dictionaries cannot send terminal escape sequences.
+pub fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() && c != '\n' && c != '\t' {
+                '\u{fffd}'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_characters_are_neutralized() {
+        assert_eq!(
+            printable("red\u{1b}[31m\u{9b}x\nnext\tcol"),
+            "red\u{fffd}[31m\u{fffd}x\nnext\tcol"
+        );
+    }
+}

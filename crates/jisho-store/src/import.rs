@@ -170,7 +170,21 @@ impl Store {
             ],
         )?;
         tx.commit()?;
-        self.checkpoint()?;
+        // The import is committed; a checkpoint problem only means the WAL
+        // file still holds part of it, which SQLite resolves later.
+        match self.checkpoint() {
+            Ok(true) => {}
+            Ok(false) => warnings.push(Warning {
+                entry: String::new(),
+                message: "another process is reading the store; part of the import stays in \
+                          the -wal file until it finishes"
+                    .to_string(),
+            }),
+            Err(e) => warnings.push(Warning {
+                entry: String::new(),
+                message: format!("checkpoint after import failed: {e}"),
+            }),
+        }
         Ok(ImportReport {
             id,
             title: index.title,
@@ -234,6 +248,7 @@ fn import_terms(
     let rows = stream_rows(
         reader,
         &entry.name,
+        state.limits.max_row_bytes,
         |mut row: TermRow| -> Result<(), StoreError> {
             let invalid = |message: String| invalid_row(entry, row_index, message);
             row.check(state.limits).map_err(invalid)?;
@@ -275,6 +290,7 @@ fn import_term_meta(
     let rows = stream_rows(
         reader,
         &entry.name,
+        state.limits.max_row_bytes,
         |row: TermMetaRow| -> Result<(), StoreError> {
             row.check(state.limits)
                 .map_err(|m| invalid_row(entry, row_index, m))?;
@@ -301,6 +317,7 @@ fn import_kanji(
     let rows = stream_rows(
         reader,
         &entry.name,
+        state.limits.max_row_bytes,
         |row: KanjiRow| -> Result<(), StoreError> {
             let invalid = |message: String| invalid_row(entry, row_index, message);
             row.check(state.limits).map_err(invalid)?;
@@ -338,6 +355,7 @@ fn import_kanji_meta(
     let rows = stream_rows(
         reader,
         &entry.name,
+        state.limits.max_row_bytes,
         |row: KanjiMetaRow| -> Result<(), StoreError> {
             row.check(state.limits)
                 .map_err(|m| invalid_row(entry, row_index, m))?;
@@ -365,6 +383,7 @@ fn import_tags(
     let rows = stream_rows(
         reader,
         &entry.name,
+        state.limits.max_row_bytes,
         |row: TagRow| -> Result<(), StoreError> {
             row.check(state.limits)
                 .map_err(|m| invalid_row(entry, row_index, m))?;

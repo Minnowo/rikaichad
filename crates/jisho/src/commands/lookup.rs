@@ -7,14 +7,14 @@ use jisho_api::{TermEntryJson, lookup_response};
 use lexopt::prelude::*;
 
 use super::Context;
-use crate::output::{CliError, out, out_json};
+use crate::output::{CliError, out, out_json, printable};
 
 pub const USAGE: &str = "\
 Usage: jisho lookup [--json] [--limit N] <TEXT>
 
 Prints dictionary entries whose term or reading is exactly TEXT (inflected
 forms are found from milestone 2 on). Exits with status 1 when nothing is
-found.
+found and 2 on errors.
 
 Options:
   --json       Print the same JSON as POST /v1/terms/lookup
@@ -64,7 +64,7 @@ pub fn run(parser: &mut lexopt::Parser, ctx: &Context) -> Result<ExitCode, CliEr
         if response.truncated {
             rendered.push_str(&format!("(more results; showing {limit})\n"));
         }
-        out(&rendered)?;
+        out(&printable(&rendered))?;
     }
     Ok(if found {
         ExitCode::SUCCESS
