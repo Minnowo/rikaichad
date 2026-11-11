@@ -227,7 +227,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rikaichad-format"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "serde",
@@ -250,14 +250,14 @@ dependencies = [
 
 [[package]]
 name = "rikaichad-ja"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "rikaichad-lookup"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "rikaichad-ja",
  "rikaichad-store",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "rikaichad-store"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "rikaichad-format",
  "rusqlite",
@@ -276,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "rikaichad-testkit"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "serde_json",
