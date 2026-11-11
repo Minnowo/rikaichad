@@ -22,6 +22,9 @@ pub struct Index {
     pub format: i64,
     pub sequenced: bool,
     pub minimum_yomitan_version: Option<String>,
+    /// Rikaitan's name for the same field (its index schema renames the
+    /// key; the rest of the format is identical).
+    pub minimum_rikaitan_version: Option<String>,
     pub author: Option<String>,
     pub url: Option<String>,
     pub description: Option<String>,
@@ -156,6 +159,7 @@ impl Index {
             format,
             sequenced,
             minimum_yomitan_version: optional_string(&map, "minimumYomitanVersion")?,
+            minimum_rikaitan_version: optional_string(&map, "minimumRikaitanVersion")?,
             author: optional_string(&map, "author")?,
             url: optional_string(&map, "url")?,
             description: optional_string(&map, "description")?,
@@ -264,6 +268,20 @@ mod tests {
         assert_eq!(index.format, 3);
         assert!(!index.sequenced);
         assert!(index.tag_meta.is_empty());
+    }
+
+    #[test]
+    fn reads_minimum_versions_of_both_readers() {
+        let index = Index::parse(
+            r#"{"title":"T","revision":"r","format":3,"minimumYomitanVersion":"1.2","minimumRikaitanVersion":"3.4"}"#,
+        )
+        .unwrap();
+        assert_eq!(index.minimum_yomitan_version.as_deref(), Some("1.2"));
+        assert_eq!(index.minimum_rikaitan_version.as_deref(), Some("3.4"));
+        assert!(
+            Index::parse(r#"{"title":"T","revision":"r","format":3,"minimumRikaitanVersion":1}"#)
+                .is_err()
+        );
     }
 
     #[test]

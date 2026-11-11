@@ -24,7 +24,8 @@ at the pinned commit:
 - `styles.css` present but empty is an import error in Yomitan
   ("No styles found"). We treat it as no styles (documented deviation).
 - `minimumYomitanVersion`: Yomitan rejects when newer than itself. We
-  store it and warn (we have no Yomitan version).
+  store it and warn (we have no Yomitan version). Rikaitan's fork of the
+  format names it `minimumRikaitanVersion`; we read and warn on both.
 
 ## Steps
 

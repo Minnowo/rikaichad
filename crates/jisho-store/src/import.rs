@@ -103,11 +103,18 @@ impl Store {
         let (index_text, warning) = archive.read_to_string(&index_entry, limits.max_index_bytes)?;
         warnings.extend(warning);
         let index = Index::parse(&index_text)?;
-        if let Some(minimum) = &index.minimum_yomitan_version {
-            warnings.push(Warning {
-                entry: index_entry.name.clone(),
-                message: format!("dictionary asks for Yomitan {minimum} or newer; imported anyway"),
-            });
+        for (reader, minimum) in [
+            ("Yomitan", &index.minimum_yomitan_version),
+            ("Rikaitan", &index.minimum_rikaitan_version),
+        ] {
+            if let Some(minimum) = minimum {
+                warnings.push(Warning {
+                    entry: index_entry.name.clone(),
+                    message: format!(
+                        "dictionary asks for {reader} {minimum} or newer; imported anyway"
+                    ),
+                });
+            }
         }
         check_total_size(archive.entries(), limits)?;
 
