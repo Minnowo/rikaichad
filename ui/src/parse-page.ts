@@ -160,10 +160,12 @@ function renderToken(
     }
     const node = el('button', 'token token-word', ruby(token.segments));
     node.type = 'button';
-    node.title = token.headwords
+    // One group per matched dictionary entry, so the same headword repeats
+    // across entries and dictionaries; show each once, in API order.
+    const labels = token.headwords
         .flat()
-        .map((h) => (h.reading === '' || h.reading === h.term ? h.term : `${h.term} (${h.reading})`))
-        .join('\n');
+        .map((h) => (h.reading === '' || h.reading === h.term ? h.term : `${h.term} (${h.reading})`));
+    node.title = [...new Set(labels)].join('\n');
     node.addEventListener('click', () => void show(token, node, index));
     return node;
 }
