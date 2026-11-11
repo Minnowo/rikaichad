@@ -1,6 +1,6 @@
 # Milestone 6 work list
 
-A web UI embedded in the binary and served by `jisho serve` (docs/brief.md:
+A web UI embedded in the binary and served by `rchad serve` (docs/brief.md:
 "web UI later on same server"; "HTML comes with the web UI").
 
 ## Decisions (user, 2026-11-10)
@@ -15,7 +15,7 @@ A web UI embedded in the binary and served by `jisho serve` (docs/brief.md:
   Yomitan's StructuredContentGenerator: same tags and class names, DOM API
   only, no innerHTML), with each dictionary's styles.css scoped to its
   definitions like Yomitan (Yomitan nests it in
-  `[data-dictionary="title"] { ... }`; jisho uses
+  `[data-dictionary="title"] { ... }`; rikaichad uses
   `[data-dictionary-id="N"]`). The CSS is parsed by the browser first, so
   unbalanced braces cannot escape the scope; nesting selectors can still
   reach the definition item and its siblings (as in Yomitan), and paint
@@ -44,7 +44,7 @@ A web UI embedded in the binary and served by `jisho serve` (docs/brief.md:
   scripts, styles, fetches from `'self'` only, no frames), nosniff,
   `Cache-Control: no-cache`.
 - External resources in dictionary CSS or structured-content styles
-  (`url(...)`) are blocked by the CSP; jisho has no media.
+  (`url(...)`) are blocked by the CSP; rikaichad has no media.
 
 ## Work list
 

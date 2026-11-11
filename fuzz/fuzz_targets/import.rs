@@ -6,10 +6,10 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use jisho_format::Limits;
-use jisho_store::Store;
-use jisho_testkit::TempDir;
 use libfuzzer_sys::fuzz_target;
+use rikaichad_format::Limits;
+use rikaichad_store::Store;
+use rikaichad_testkit::TempDir;
 
 struct State {
     dir: TempDir,

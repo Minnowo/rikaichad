@@ -1,4 +1,4 @@
-# Project brief: jisho
+# Project brief: rikaichad
 
 Status: approved (2026-11-10)
 Phases done: 1-7 (repository initialized 2026-11-10)
@@ -252,9 +252,11 @@ Accepted by the user 2026-11-10 (no changes requested).
 
 Status: approved 2026-11-10.
 
-- **Name:** `jisho` (user decision). Binary `jisho`, crates `jisho-*`,
-  data dir `jisho`. Note: the crate name `jisho` is taken on crates.io
-  by an unrelated JMdict crate; publishing needs another package name.
+- **Name:** `rikaichad` (user decision, 2026-11-11; first named `jisho`,
+  renamed to avoid confusion with jisho.org). Binary `rchad` (short to
+  type), crates `rikaichad-*`, data dir `rikaichad`, environment
+  variables `RIKAICHAD_*`. The CLI warns when it finds a store at the old
+  `jisho` path and does not move it.
 - **Language / runtime:** Rust (stable, edition 2024) - user constraint.
   The type system catches the likely bug classes (malformed input shapes,
   missing cases in result modes). Runner-up: none considered.
@@ -306,8 +308,8 @@ collation (code-point order; documented deviation in tie-breaks only).
 ### Storage
 
 SQLite via rusqlite (user decision; "performance is a must"). The store is
-private to jisho (not a public format): each dictionary row records its
-source path and sha256 so `jisho reimport --all` can rebuild after a store
+private to rikaichad (not a public format): each dictionary row records its
+source path and sha256 so `rchad reimport --all` can rebuild after a store
 version bump; if a source zip is gone, the CLI says which ones.
 
 Layout: **one SQLite file for all dictionaries** (user decision
@@ -316,10 +318,10 @@ their zips as the source of truth). Only text is stored (no images or other
 media, user decision 2026-11-10); styles.css is kept inside the same file,
 so the store is self-contained and much smaller. The file is checkpointed
 (WAL merged, `-wal`/`-shm` removed) on clean shutdown and after each
-import, so a copied file is complete; `jisho export-store <path>` makes a
+import, so a copied file is complete; `rchad export-store <path>` makes a
 consistent copy while running (SQLite backup API). Reimport after a store
 version bump matches source zips by sha256, searching paths the user gives
-(`jisho reimport --all --from <dir>`), since recorded paths differ across
+(`rchad reimport --all --from <dir>`), since recorded paths differ across
 machines.
 
 The milestone 1 benchmark now tunes this layout instead of choosing one.
@@ -380,7 +382,7 @@ titles, as Yomitan does), 9.06M terms, 14.8M rows in total.
 | 16-char scan, prefixes only, match           | p50 0.64 ms, p99 3.8 ms        | p50 5, p99 20 ms  |
 | Same, plus glossaries of the first 100 hits  | p50 1.9 ms, p99 5.7 ms         | (same)            |
 
-`jisho bench` with `bench/sentences.txt` (967 scans, 11,367 candidates).
+`rchad bench` with `bench/sentences.txt` (967 scans, 11,367 candidates).
 The first layout (glossary inside `terms`) gave p50 12 ms / p99 78 ms for
 the same scans: every match loaded and parsed its glossary. Glossaries now
 live in `term_glossaries` and are loaded only for returned entries.
@@ -423,8 +425,8 @@ to prefer it.
 
 ### Licensing details
 
-- Crate SPDX: `jisho-format`, `jisho-store`, `jisho-api`, `jisho`:
-  `AGPL-3.0-or-later`. `jisho-ja`, `jisho-lookup` (contain ported files):
+- Crate SPDX: `rikaichad-format`, `rikaichad-store`, `rikaichad-api`, `rikaichad`:
+  `AGPL-3.0-or-later`. `rikaichad-ja`, `rikaichad-lookup` (contain ported files):
   `AGPL-3.0-or-later AND GPL-3.0-or-later`.
 - The generated CJK-compatibility table carries the Unicode License v3
   notice (UnicodeData.txt source, version recorded).
@@ -445,20 +447,20 @@ cannot name a higher one).
 
 ```
 crates/
-  jisho-format/    Yomitan zip + JSON parsing and validation, caps for
+  rikaichad-format/    Yomitan zip + JSON parsing and validation, caps for
                    hostile input. No storage. (own code, AGPL)
-  jisho-ja/        Ported Yomitan Japanese: transforms, text preprocessors,
+  rikaichad-ja/        Ported Yomitan Japanese: transforms, text preprocessors,
                    kana/CJK utilities, generated CJK-compat table.
                    (GPL-3.0-or-later headers, Yomitan copyright)
-  jisho-store/     SQLite schema, import (streaming), queries. Depends on
-                   jisho-format.
-  jisho-lookup/    Ported Yomitan translator: variants, prefix scan,
+  rikaichad-store/     SQLite schema, import (streaming), queries. Depends on
+                   rikaichad-format.
+  rikaichad-lookup/    Ported Yomitan translator: variants, prefix scan,
                    deinflect, validate, rank, group/merge, kanji lookup,
-                   sentence parse. Depends on jisho-ja, jisho-store.
+                   sentence parse. Depends on rikaichad-ja, rikaichad-store.
                    (GPL-3.0-or-later headers for ported files)
-  jisho-api/       HTTP server: one handler per file, read-only guard,
-                   origin check. Depends on jisho-lookup.
-  jisho/           Binary: one CLI command per file (import, list, remove,
+  rikaichad-api/       HTTP server: one handler per file, read-only guard,
+                   origin check. Depends on rikaichad-lookup.
+  rikaichad/           Binary: one CLI command per file (import, list, remove,
                    order, lookup, kanji, parse, serve, bench).
 docs/              brief, reference, survey, API spec (docs/api.md)
 tests/fixtures/    tiny hand-written dictionaries (own, committed)
@@ -483,7 +485,7 @@ scripts/check.sh   all checks
   that tie on every criterion before the final collation tie-break
   (Yomitan uses Intl.Collator en-US there; we use code-point order and
   document it - review H6). ICU4X collation is "later" if users notice.
-- Local collection: an opt-in test/bench (`JISHO_DICT_DIR=dictionaries`)
+- Local collection: an opt-in test/bench (`RIKAICHAD_DICT_DIR=dictionaries`)
   imports every zip in the user's folder; never runs in CI.
 - Fuzzing: the zip/JSON importer and structured-content renderer
   (cargo-fuzz; needs a dev-tool approval when added). HTTP parsing is
@@ -499,8 +501,8 @@ scripts/check.sh   all checks
 - `cargo test --workspace`, failing if zero tests ran.
 - ASCII check on code and docs, excluding fixture data, ported Japanese
   tables and `docs/reference/`.
-- License header check: every file in jisho-ja and every ported file in
-  jisho-lookup carries the GPL-3.0-or-later Yomitan header; NOTICE lists
+- License header check: every file in rikaichad-ja and every ported file in
+  rikaichad-lookup carries the GPL-3.0-or-later Yomitan header; NOTICE lists
   them with the upstream commit.
 - Dependency license check via `cargo metadata` (allow MIT, Apache-2.0,
   BSD, Unicode, Zlib, ISC, GPL/AGPL; anything else fails).
@@ -514,20 +516,20 @@ anyone can reproduce them; the user's collection is benchmarked and
 reported additionally.
 
 1. **Import + exact lookup, CLI and HTTP + storage benchmark:**
-   `jisho import <zip>` streams a format-3 dictionary into SQLite (atomic,
+   `rchad import <zip>` streams a format-3 dictionary into SQLite (atomic,
    capped, hostile input rejected with the JSON path of the error, media
-   entries skipped, styles.css stored); `jisho lookup <word>` prints exact matches;
-   `jisho serve` answers `POST /v1/terms/lookup` with the same results.
+   entries skipped, styles.css stored); `rchad lookup <word>` prints exact matches;
+   `rchad serve` answers `POST /v1/terms/lookup` with the same results.
    `docs/api.md` written first: `/v1` prefix, error envelope, caps, result
    limits, lengths given both in code points and UTF-16 units, async
-   import jobs (id, progress, cancel). `jisho bench` measures import,
+   import jobs (id, progress, cancel). `rchad bench` measures import,
    size and probe latency of the single-file store. - done when: fixture
    + hostile-input tests pass on 3 OSes; the public corpus imports; the
    user collection imports with 0 errors; a copied store file opens and
    answers lookups on another OS in CI; numbers recorded in sec 5.
-2. **Japanese engine port:** jisho-ja (transforms, preprocessors incl.
+2. **Japanese engine port:** rikaichad-ja (transforms, preprocessors incl.
    romaji and kana conversion) and scan/deinflect/validate in
-   jisho-lookup, through CLI and HTTP. Looking up "taberarenakatta"
+   rikaichad-lookup, through CLI and HTTP. Looking up "taberarenakatta"
    (in kana/kanji) returns "taberu" with its inflection chain. - done
    when: ported Yomitan transform tests pass; scan targets in sec 5 met
    on the public corpus (a miss blocks the milestone).
@@ -545,7 +547,7 @@ reported additionally.
    when: each fuzzer runs 1 hour without a finding; check script green on
    Linux/macOS/Windows CI.
 6. **Web UI** (added 2026-11-10, user request): word lookup, kanji and
-   sentence parse pages served by `jisho serve` from files embedded in
+   sentence parse pages served by `rchad serve` from files embedded in
    the binary; TypeScript and Tailwind with ponkotsu-css; glossaries
    rendered from structured content with dictionaries' styles.css
    scoped as in Yomitan. Plan and decisions: docs/plan/milestone-6.md. -

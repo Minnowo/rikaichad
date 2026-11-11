@@ -1,4 +1,4 @@
-# jisho
+# rikaichad
 
 A Japanese dictionary engine for [Rikaitan](https://github.com/Ajatt-Tools/rikaitan)/[Yomitan](https://github.com/yomidevs/yomitan) dictionaries.
 
@@ -18,7 +18,7 @@ A Japanese dictionary engine for [Rikaitan](https://github.com/Ajatt-Tools/rikai
 - **Kanji** readings, meanings, stats and frequencies.
 - **Parse** sentences into words with furigana.
 - **HTTP/JSON API** (docs/api.md), including dictionary upload, removal, order and settings, with a `--read-only` mode.
-- **Web UI** in the same binary: `jisho serve` and open http://127.0.0.1:47613/ for word lookup, kanji and sentence parsing.
+- **Web UI** in the same binary: `rchad serve` and open http://127.0.0.1:47613/ for word lookup, kanji and sentence parsing.
 
 ## Quick start
 
@@ -26,28 +26,28 @@ Build from source (see docs/install.md for requirements and options):
 
 ```sh
 cargo build --release
-cp target/release/jisho ~/.local/bin/    # or anywhere on your PATH
+cp target/release/rchad ~/.local/bin/    # or anywhere on your PATH
 ```
 
 Then:
 
 ```sh
-jisho import JMdict_english.zip KANJIDIC_english.zip
-jisho lookup taberarenakatta     # Japanese text or romaji
-jisho kanji KANJI                # e.g. a kanji character
-jisho parse SENTENCE             # words with furigana
-jisho lookup --result-mode merge --json iku   # the API's JSON
+rchad import JMdict_english.zip KANJIDIC_english.zip
+rchad lookup taberarenakatta     # Japanese text or romaji
+rchad kanji KANJI                # e.g. a kanji character
+rchad parse SENTENCE             # words with furigana
+rchad lookup --result-mode merge --json iku   # the API's JSON
 
-jisho list                       # dictionaries, in lookup order
-jisho order JMdict               # put JMdict first
-jisho dictionary 3 --disable     # stop using dictionary 3
-jisho settings --sort-frequency JPDB --sort-frequency-order ascending
-jisho remove JMdict
+rchad list                       # dictionaries, in lookup order
+rchad order JMdict               # put JMdict first
+rchad dictionary 3 --disable     # stop using dictionary 3
+rchad settings --sort-frequency JPDB --sort-frequency-order ascending
+rchad remove JMdict
 
-jisho serve                      # API and web UI on http://127.0.0.1:47613/
+rchad serve                      # API and web UI on http://127.0.0.1:47613/
 ```
 
-`jisho --help` and `jisho COMMAND --help` list everything.
+`rchad --help` and `rchad COMMAND --help` list everything.
 
 ## Documentation
 
@@ -62,12 +62,12 @@ jisho serve                      # API and web UI on http://127.0.0.1:47613/
 
 ```sh
 scripts/check.sh    # format, lint, tests, ASCII, license and dependency checks
-jisho bench         # lookup latency on your store (bench/sentences.txt)
+rchad bench         # lookup latency on your store (bench/sentences.txt)
 ```
 
 The web UI's sources are in ui/src (TypeScript, Tailwind with ponkotsu-css).
 The built files in ui/dist are committed and embedded in
-the binary, so building jisho needs no Node.js; after changing the UI,
+the binary, so building rikaichad needs no Node.js; after changing the UI,
 rebuild them (Node.js 22 or newer):
 
 ```sh
@@ -96,6 +96,6 @@ Read AGENTS.md before contributing.
 AGPL-3.0-or-later (LICENSE). Files ported from Yomitan stay under
 GPL-3.0-or-later; see NOTICE for them and for third-party data, and
 docs/install.md for what to ship with a binary. If you
-run a modified jisho as a network service for others, AGPL-3.0 requires
+run a modified rikaichad as a network service for others, AGPL-3.0 requires
 you to offer them its source: publish it and pass `--source-url` to
-`jisho serve` (GET /v1/source shows it with the commit).
+`rchad serve` (GET /v1/source shows it with the commit).

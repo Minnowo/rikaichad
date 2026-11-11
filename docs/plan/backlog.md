@@ -10,4 +10,4 @@ Work the user parked to come back to. Not scheduled in a milestone.
   Listed as open in docs/brief.md (Storage).
 - CI on Linux, macOS and Windows (milestones 1 and 5 done-criteria): needs
   a GitHub repository.
-- `jisho reimport`: re-import all dictionaries after a store format change.
+- `rchad reimport`: re-import all dictionaries after a store format change.

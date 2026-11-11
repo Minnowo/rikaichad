@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/jisho-format",
-    "crates/jisho-ja",
-    "crates/jisho-store",
-    "crates/jisho-lookup",
-    "crates/jisho-api",
-    "crates/jisho",
-    "crates/jisho-testkit",
+    "crates/rikaichad-format",
+    "crates/rikaichad-ja",
+    "crates/rikaichad-store",
+    "crates/rikaichad-lookup",
+    "crates/rikaichad-api",
+    "crates/rikaichad",
+    "crates/rikaichad-testkit",
 ]
 
 [workspace.package]

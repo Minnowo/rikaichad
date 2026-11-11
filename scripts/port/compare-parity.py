@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Compares the compact results of scripts/port/yomitan-oracle.mjs (Yomitan)
-and crates/jisho-lookup/tests/corpus_parity.rs (jisho) line by line.
+and crates/rikaichad-lookup/tests/corpus_parity.rs (rikaichad) line by line.
 
 Prints a summary per mode and the first differences; exit status 1 if any
 query differs. Numbers compare by value (1 == 1.0).
 
-Usage: python3 scripts/port/compare-parity.py yomitan.jsonl jisho.jsonl [max shown]
+Usage: python3 scripts/port/compare-parity.py yomitan.jsonl rikaichad.jsonl [max shown]
 """
 
 import json
@@ -40,11 +40,11 @@ def first_difference(a, b, path="$"):
 
 
 def main() -> int:
-    yomitan_path, jisho_path = sys.argv[1], sys.argv[2]
+    yomitan_path, rikaichad_path = sys.argv[1], sys.argv[2]
     shown_max = int(sys.argv[3]) if len(sys.argv) > 3 else 10
     totals, failures = Counter(), Counter()
     shown = 0
-    with open(yomitan_path, encoding="utf-8") as fy, open(jisho_path, encoding="utf-8") as fj:
+    with open(yomitan_path, encoding="utf-8") as fy, open(rikaichad_path, encoding="utf-8") as fj:
         for line_y, line_j in zip(fy, fj):
             y, j = json.loads(line_y), json.loads(line_j)
             if (y["mode"], y["text"]) != (j["mode"], j["text"]):
@@ -57,7 +57,7 @@ def main() -> int:
                 if shown < shown_max:
                     shown += 1
                     path, a, b = found
-                    print(f"[{y['mode']}] {y['text']}\n  at {path}\n  yomitan {json.dumps(a, ensure_ascii=False)[:400]}\n  jisho   {json.dumps(b, ensure_ascii=False)[:400]}")
+                    print(f"[{y['mode']}] {y['text']}\n  at {path}\n  yomitan {json.dumps(a, ensure_ascii=False)[:400]}\n  rikaichad   {json.dumps(b, ensure_ascii=False)[:400]}")
     for mode in totals:
         print(f"{mode}: {totals[mode] - failures[mode]}/{totals[mode]} identical")
     return 1 if sum(failures.values()) else 0

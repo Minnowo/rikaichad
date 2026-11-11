@@ -1,8 +1,8 @@
 # Milestone 2 work list
 
 Japanese engine port: Yomitan's Japanese transforms and text preprocessors
-(jisho-ja), and the scan / deinflect / validate / sort core of its
-translator (jisho-lookup), through CLI and HTTP. See `docs/brief.md`
+(rikaichad-ja), and the scan / deinflect / validate / sort core of its
+translator (rikaichad-lookup), through CLI and HTTP. See `docs/brief.md`
 section 6. Upstream: `reference-src/yomitan` at
 ee81f8dcf13e985bb4d7961009fb49a764b4d924.
 
@@ -15,15 +15,15 @@ collection.
 
 | Rust                              | Yomitan source                                                  | How                     |
 |-----------------------------------|-----------------------------------------------------------------|-------------------------|
-| jisho-ja transformer              | ext/js/language/language-transformer.js, language-transforms.js | hand port               |
-| jisho-ja data/japanese-transforms.json | ext/js/language/ja/japanese-transforms.js                  | dumped by node script   |
-| jisho-ja kana / width / combining / emphatic functions | ext/js/language/ja/japanese.js             | hand port               |
-| jisho-ja CJK ranges, NFKD tables  | ext/js/language/CJK-util.js, String.normalize('NFKD')           | hand port + node dump   |
-| jisho-ja romaji                   | ext/js/language/ja/japanese-wanakana.js, japanese-kana-romaji-dicts.js | hand port + node dump |
-| jisho-ja kanji variants           | npm kanji-processor 1.0.2 (MIT), used by standardizeKanji       | node dump               |
-| jisho-ja text preprocessors       | ext/js/language/ja/japanese-text-preprocessors.js, CJK-util.js normalizeRadicalCharacters, language-descriptors.js (order) | hand port |
-| jisho-lookup                      | ext/js/language/translator.js: _findTermsInternal, _getDeinflections, _getDictionaryDeinflections, _getAlgorithmDeinflections, _getTextVariants, _getNextSubstring, _getDictionaryEntries, _matchEntriesToDeinflections, _sortTermDictionaryEntries, _getJapaneseChineseKoreanOnlyText | hand port |
-| jisho-store bulk term query       | ext/js/dictionary/dictionary-database.js findTermsBulk           | own SQL + ported row assignment |
+| rikaichad-ja transformer              | ext/js/language/language-transformer.js, language-transforms.js | hand port               |
+| rikaichad-ja data/japanese-transforms.json | ext/js/language/ja/japanese-transforms.js                  | dumped by node script   |
+| rikaichad-ja kana / width / combining / emphatic functions | ext/js/language/ja/japanese.js             | hand port               |
+| rikaichad-ja CJK ranges, NFKD tables  | ext/js/language/CJK-util.js, String.normalize('NFKD')           | hand port + node dump   |
+| rikaichad-ja romaji                   | ext/js/language/ja/japanese-wanakana.js, japanese-kana-romaji-dicts.js | hand port + node dump |
+| rikaichad-ja kanji variants           | npm kanji-processor 1.0.2 (MIT), used by standardizeKanji       | node dump               |
+| rikaichad-ja text preprocessors       | ext/js/language/ja/japanese-text-preprocessors.js, CJK-util.js normalizeRadicalCharacters, language-descriptors.js (order) | hand port |
+| rikaichad-lookup                      | ext/js/language/translator.js: _findTermsInternal, _getDeinflections, _getDictionaryDeinflections, _getAlgorithmDeinflections, _getTextVariants, _getNextSubstring, _getDictionaryEntries, _matchEntriesToDeinflections, _sortTermDictionaryEntries, _getJapaneseChineseKoreanOnlyText | hand port |
+| rikaichad-store bulk term query       | ext/js/dictionary/dictionary-database.js findTermsBulk           | own SQL + ported row assignment |
 
 ## Behaviour that must be kept exactly
 
@@ -54,21 +54,21 @@ score, dictionaryIndex, sourceTermExactMatchCount, matchPrimaryReading,
 maxOriginalTextLength, definition ids, sequences and entries; plus
 originalTextLength. Not compared yet (milestone 3): tags, frequencies,
 pronunciations, grouping modes. Skipped: textReplacements (5 tests; a
-Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
+Yomitan option not in rikaichad v1), non-Japanese languages (en, ko, la).
 
 ## Steps
 
 1.  [x] Port data with node: transforms (done), romaji table, NFKD
         tables, kanji variants; port test data (transform tests, translator
         tests and valid-dictionary1) into tests/fixtures/yomitan with NOTICE.
-2.  [x] jisho-ja: transformer + transform table; transform tests pass.
-3.  [x] jisho-ja: kana/width/combining/emphatic/romaji/CJK/kanji-variant
+2.  [x] rikaichad-ja: transformer + transform table; transform tests pass.
+3.  [x] rikaichad-ja: kana/width/combining/emphatic/romaji/CJK/kanji-variant
         functions and the 9 preprocessors; differential test against
         Yomitan's own functions on 16k inputs (scripts/port/dump-ja-golden.mjs)
         instead of transcribing test/japanese-util.test.js.
-4.  [x] jisho-store: `form_of` and `content_count` columns at import;
+4.  [x] rikaichad-store: `form_of` and `content_count` columns at import;
         bulk term query returning the matched expression/reading.
-5.  [x] jisho-lookup: variants, deinflections, bulk matching, dictionary
+5.  [x] rikaichad-lookup: variants, deinflections, bulk matching, dictionary
         deinflections, entry creation, duplicate handling, sort.
 6.  [x] Translator parity test (subset above).
 7.  [x] API `mode: "scan"` (default) and CLI `lookup` using it; response
@@ -82,7 +82,7 @@ Yomitan option not in jisho v1), non-Japanese languages (en, ko, la).
   replacements) match Yomitan's expected results exactly, except the size
   keys of image glossary items (width, height, preferredWidth,
   preferredHeight), which Yomitan rewrites at import from the image files
-  and jisho, being text only, keeps as the dictionary states them.
+  and rikaichad, being text only, keeps as the dictionary states them.
   Mutations (no sort; reading claims before term) make 4 and 3 cases fail.
 - The task description said 38 cases; the correct count is 32 (the other
   split cases use textReplacements or other languages).

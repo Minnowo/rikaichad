@@ -2,7 +2,7 @@
 
 Copied or extracted from Yomitan @ ee81f8dcf13e985bb4d7961009fb49a764b4d924 (GPL-3.0-or-later,
 (C) 2023-2026 Yomitan Authors, (C) 2016-2022 Yomichan Authors). Used as
-the parity oracle for jisho's port.
+the parity oracle for rikaichad's port.
 
 | File                            | Source                                                     |
 |---------------------------------|------------------------------------------------------------|

@@ -1,0 +1,28 @@
+[package]
+name = "rikaichad"
+description = "Japanese dictionary CLI and HTTP API that reads Yomitan dictionaries."
+license = "AGPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Short to type; the program is called rikaichad everywhere else.
+[[bin]]
+name = "rchad"
+path = "src/main.rs"
+
+[dependencies]
+rikaichad-api = { path = "../rikaichad-api" }
+rikaichad-format = { path = "../rikaichad-format" }
+rikaichad-lookup = { path = "../rikaichad-lookup" }
+rikaichad-store = { path = "../rikaichad-store" }
+lexopt = "0.3.2"
+serde = "1"
+serde_json = "1"
+
+[dev-dependencies]
+rikaichad-testkit = { path = "../rikaichad-testkit" }
+
+[lints]
+workspace = true

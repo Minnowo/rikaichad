@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Extracts the data of Yomitan's Japanese deinflection tests
 // (test/language/japanese-transforms.test.js, a vitest file) as JSON, for
-// crates/jisho-ja/tests. Only the `const tests = [...]` array literal is
+// crates/rikaichad-ja/tests. Only the `const tests = [...]` array literal is
 // evaluated; the vitest calls around it are not run.
 //
 // Usage: node scripts/port/dump-yomitan-tests.mjs <yomitan checkout> > out.json

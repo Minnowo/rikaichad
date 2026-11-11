@@ -1,6 +1,6 @@
-# Installing jisho
+# Installing rikaichad
 
-jisho is one binary with no runtime dependencies. Releases have prebuilt
+rikaichad is one binary with no runtime dependencies. Releases have prebuilt
 archives for Linux (x86_64), macOS (Apple silicon and Intel) and Windows
 (x86_64), each with the licenses to ship alongside it; unpack one and put
 the binary on your PATH. Or build it from source as below.
@@ -24,27 +24,27 @@ From a checkout of the repository:
 cargo build --release
 ```
 
-The binary is `target/release/jisho` (`jisho.exe` on Windows). Copy it to
+The binary is `target/release/rchad` (`rchad.exe` on Windows). Copy it to
 a directory on your PATH, e.g. `~/.local/bin` on Linux and macOS.
 
 Or let cargo build and install it into `~/.cargo/bin` in one step:
 
 ```sh
-cargo install --path crates/jisho
+cargo install --path crates/rikaichad
 ```
 
 The build records the git commit it was built from (shown by `GET
-/v1/source`). Outside a git checkout, set `JISHO_GIT_COMMIT` to the
-commit (and `JISHO_GIT_DIRTY=false` if unmodified) when building.
+/v1/source`). Outside a git checkout, set `RIKAICHAD_GIT_COMMIT` to the
+commit (and `RIKAICHAD_GIT_DIRTY=false` if unmodified) when building.
 
 ## Dictionaries
 
-jisho reads Yomitan dictionary zips (format 3), the same files you import
+rikaichad reads Yomitan dictionary zips (format 3), the same files you import
 into Yomitan. Free ones to start with: JMdict and KANJIDIC from
 https://github.com/yomidevs/jmdict-yomitan/releases.
 
 ```sh
-jisho import JMdict_english.zip KANJIDIC_english.zip
+rchad import JMdict_english.zip KANJIDIC_english.zip
 ```
 
 Importing a large dictionary takes seconds to a minute; 99 dictionaries
@@ -56,25 +56,25 @@ All imported dictionaries live in one SQLite file, the store:
 
 | Platform | Default location                                      |
 |----------|-------------------------------------------------------|
-| Linux    | `$XDG_DATA_HOME/jisho/jisho.sqlite` or `~/.local/share/jisho/jisho.sqlite` |
-| macOS    | `~/Library/Application Support/jisho/jisho.sqlite`    |
-| Windows  | `%APPDATA%\jisho\jisho.sqlite`                        |
+| Linux    | `$XDG_DATA_HOME/rikaichad/rikaichad.sqlite` or `~/.local/share/rikaichad/rikaichad.sqlite` |
+| macOS    | `~/Library/Application Support/rikaichad/rikaichad.sqlite`    |
+| Windows  | `%APPDATA%\rikaichad\rikaichad.sqlite`                        |
 
-`--store PATH` or the `JISHO_STORE` environment variable choose another
-file. The store is self-contained: copy it (while jisho is not writing to
+`--store PATH` or the `RIKAICHAD_STORE` environment variable choose another
+file. The store is self-contained: copy it (while rikaichad is not writing to
 it) to use the same dictionaries on another machine, any platform. It also
-keeps the dictionary order and settings (`jisho order`, `jisho
-dictionary`, `jisho settings`).
+keeps the dictionary order and settings (`rchad order`, `rchad
+dictionary`, `rchad settings`).
 
-Keep your dictionary zips. When a new jisho version changes the store
+Keep your dictionary zips. When a new rikaichad version changes the store
 format, it refuses the old store with a message; delete the store file
 and import the zips again.
 
 ## Running the server
 
 ```sh
-jisho serve                                # 127.0.0.1:47613, this machine only
-jisho serve --bind 0.0.0.0:47613 --read-only
+rchad serve                                # 127.0.0.1:47613, this machine only
+rchad serve --bind 0.0.0.0:47613 --read-only
 ```
 
 Open http://127.0.0.1:47613/ in a browser for the web UI (lookup, kanji,
@@ -86,28 +86,28 @@ only from origins you allow with `--allow-origin` (the built-in web UI is
 always allowed), and requests with a foreign `Host` header are refused
 (DNS rebinding). With `--bind` on a network
 address, anyone who can reach it can use it: add `--read-only` so nobody
-can import, remove or change dictionaries (jisho warns when you do not).
+can import, remove or change dictionaries (rikaichad warns when you do not).
 To open the web UI by a host name rather than an IP address (e.g.
-`http://jisho.lan:47613/`), add the name with `--allow-host`; behind a
+`http://rikaichad.lan:47613/`), add the name with `--allow-host`; behind a
 reverse proxy, the proxy must pass the original `Host` header.
 docs/api.md has the details and the limits.
 
 To keep it running on Linux, a systemd user service works, for example
-`~/.config/systemd/user/jisho.service`:
+`~/.config/systemd/user/rikaichad.service`:
 
 ```ini
 [Unit]
-Description=jisho dictionary API
+Description=rikaichad dictionary API
 
 [Service]
-ExecStart=%h/.local/bin/jisho serve --read-only
+ExecStart=%h/.local/bin/rchad serve --read-only
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
 ```
 
-then `systemctl --user enable --now jisho`. Ctrl-C (or stopping the
+then `systemctl --user enable --now rikaichad`. Ctrl-C (or stopping the
 service) cancels a running import; nothing half-imported is kept.
 
 ## Distributing binaries

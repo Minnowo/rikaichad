@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Builds the web UI into dist/ (committed; embedded into the jisho binary
-// by crates/jisho-api/build.rs): TypeScript to ES modules with tsc, the
+// Builds the web UI into dist/ (committed; embedded into the rikaichad binary
+// by crates/rikaichad-api/build.rs): TypeScript to ES modules with tsc, the
 // stylesheet with Tailwind, and index.html copied. Output is deterministic
 // so scripts/check.sh can compare it with the committed copy.
 //

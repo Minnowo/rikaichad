@@ -10,7 +10,7 @@ ee81f8dcf13e985bb4d7961009fb49a764b4d924.
 Done when: Yomitan's translator tests pass for every Japanese case without
 textReplacements (all modes, kanji, full entries including tags,
 frequencies and pronunciations); the differential run of Yomitan's own
-translator against jisho on the public corpus (group and merge modes)
+translator against rikaichad on the public corpus (group and merge modes)
 matches by the brief's criterion; scan targets still met in the default
 mode on the user's collection.
 
@@ -18,12 +18,12 @@ mode on the user's collection.
 
 | Rust                        | Yomitan source (ext/js/...)                                         |
 |-----------------------------|----------------------------------------------------------------------|
-| jisho-lookup tags           | language/translator.js: TranslatorTagAggregator, _expandTagGroups, _groupTags, _mergeSimilarTags, _flagRedundantDefinitionTags, _createTag |
-| jisho-lookup grouping       | _groupDictionaryEntriesByHeadword/ByTerm, _groupDictionaryEntries, _createGroupedDictionaryEntry, _sortHeadwords, _getHeadwordMatchCounts, _addTermHeadwords, _addUniqueSources, _addTermDefinitions(Fast), _addUniqueTermHeadwordIndex |
-| jisho-lookup merge          | _getRelatedDictionaryEntries, _addRelatedDictionaryEntries, _addSecondaryRelatedDictionaryEntries, _removeExcludedDefinitions, _removeUnusedHeadwords |
-| jisho-lookup metadata       | _addTermMeta, _getFrequencyInfo, _convertStringToNumber, _updateSortFrequencies, _sortTermDictionaryEntryDefinitions, _sortTermDictionaryEntrySimpleData |
-| jisho-lookup kanji          | findKanji, _expandKanjiStats, _sortKanjiStats, _addKanjiMeta, _sortKanjiDictionaryEntries, _sortKanjiDictionaryEntryData |
-| jisho-store queries         | dictionary/dictionary-database.js: findTermMetaBulk, findTagMetaBulk, findTermsBySequenceBulk, findTermsExactBulk, findKanjiBulk, findKanjiMetaBulk (row order of _findMultiBulk / _findFirstBulk) |
+| rikaichad-lookup tags           | language/translator.js: TranslatorTagAggregator, _expandTagGroups, _groupTags, _mergeSimilarTags, _flagRedundantDefinitionTags, _createTag |
+| rikaichad-lookup grouping       | _groupDictionaryEntriesByHeadword/ByTerm, _groupDictionaryEntries, _createGroupedDictionaryEntry, _sortHeadwords, _getHeadwordMatchCounts, _addTermHeadwords, _addUniqueSources, _addTermDefinitions(Fast), _addUniqueTermHeadwordIndex |
+| rikaichad-lookup merge          | _getRelatedDictionaryEntries, _addRelatedDictionaryEntries, _addSecondaryRelatedDictionaryEntries, _removeExcludedDefinitions, _removeUnusedHeadwords |
+| rikaichad-lookup metadata       | _addTermMeta, _getFrequencyInfo, _convertStringToNumber, _updateSortFrequencies, _sortTermDictionaryEntryDefinitions, _sortTermDictionaryEntrySimpleData |
+| rikaichad-lookup kanji          | findKanji, _expandKanjiStats, _sortKanjiStats, _addKanjiMeta, _sortKanjiDictionaryEntries, _sortKanjiDictionaryEntryData |
+| rikaichad-store queries         | dictionary/dictionary-database.js: findTermMetaBulk, findTagMetaBulk, findTermsBySequenceBulk, findTermsExactBulk, findKanjiBulk, findKanjiMetaBulk (row order of _findMultiBulk / _findFirstBulk) |
 | lookup options              | background/backend.js _getTranslatorFindTermsOptions (merge mode adds a disabled main dictionary and excludes its definitions) |
 
 ## Behaviour that must be kept exactly
@@ -38,7 +38,7 @@ mode on the user's collection.
   primary entry with the fewest chains (first wins ties).
 - Tag expansion happens once at the end on the merged tag-name groups;
   tags with the same name and category merge; sort by order, then name.
-- Yomitan's default result mode is `group`; jisho's default follows.
+- Yomitan's default result mode is `group`; rikaichad's default follows.
 
 ## Store changes (version 4; older stores are refused and re-imported)
 
@@ -56,7 +56,7 @@ mode on the user's collection.
 ## Steps
 
 1.  [x] Store: schema (v3, then v4), settings, queries above.
-2.  [x] jisho-lookup: tags, grouping, merge, metadata, sort frequencies,
+2.  [x] rikaichad-lookup: tags, grouping, merge, metadata, sort frequencies,
         kanji.
 3.  [x] Translator parity test: every in-scope case, full entries.
 4.  [x] API: `result_mode`, tags as objects, frequencies, pronunciations;
@@ -84,10 +84,10 @@ not exercise them), hence the differential runs below.
 ### Differential runs against Yomitan's own translator
 
 scripts/port/yomitan-oracle.mjs runs Yomitan's translator.js (pinned
-commit, real `Intl.Collator`) over a jisho store's rows with an IndexedDB
+commit, real `Intl.Collator`) over a rikaichad store's rows with an IndexedDB
 fake that returns rows in IndexedDB's order; the store's settings are
-passed as Yomitan's backend would. crates/jisho-lookup/tests/corpus_parity.rs
-prints jisho's results in the same compact form (every field of every
+passed as Yomitan's backend would. crates/rikaichad-lookup/tests/corpus_parity.rs
+prints rikaichad's results in the same compact form (every field of every
 entry except glossary content, which is compared by item count and
 deinflection-reference count). Queries: every start position of
 bench/sentences.txt, 16 characters (923).
@@ -99,7 +99,7 @@ bench/sentences.txt, 16 characters (923).
 | same                                           | B: order changed, Shinwaei (shin-wa-ei) secondary searches, aliases, Kanjium disabled, JPDB sort frequency ascending | split, group, merge, term, simple, kanji: 923/923 each |
 | Crafted dictionary (tests/fixtures/parity)     | defaults                                    | 45/45, committed as a test       |
 
-What the oracle cannot see: it reads jisho's own store, so importer
+What the oracle cannot see: it reads rikaichad's own store, so importer
 behaviour (sorted object keys, number formats, text items flattened,
 empty readings replaced, kanji stat order) is shared by both sides; the
 importer is checked against Yomitan's import separately (milestone 1).
@@ -116,9 +116,9 @@ Fixed along the way:
 - Collation: the final tie-breaks (headwords, tag names, kanji stats) used
   code points; with Yomitan's real collator 3% of group-mode scans had a
   different order within the first 32 entries (kana compare by letter
-  before script and dakuten; kanji are not in code point order). jisho now
+  before script and dakuten; kanji are not in code point order). rikaichad now
   compares by per-character weights measured from Intl.Collator
-  (crates/jisho-lookup/data/collation.json: the Basic Multilingual Plane,
+  (crates/rikaichad-lookup/data/collation.json: the Basic Multilingual Plane,
   55,485 characters; characters the collator expands, e.g. U+3006, and
   combining marks are left out and sort after all others by code point).
   0 of 288,846 random pairs of covered strings differ (prototype on the
@@ -167,11 +167,11 @@ Fixed while measuring:
 - Characters outside the collation table (CJK extension B and other
   supplementary planes, characters the collator expands, combining marks)
   sort after all others, by code point, in the final tie-break.
-- Merge-mode definition dedupe compares glossaries as jisho stores them,
+- Merge-mode definition dedupe compares glossaries as rikaichad stores them,
   with object keys sorted, so two glossaries that differ only in key order
-  count as duplicates in jisho and not in Yomitan.
+  count as duplicates in rikaichad and not in Yomitan.
 - Two distinct tag names the collator calls equal (e.g. differing only by
-  a zero-width character) on pronunciations: with a limit, jisho orders
+  a zero-width character) on pronunciations: with a limit, rikaichad orders
   them by their first appearance among the kept entries, Yomitan among all
   entries.
 - Image glossary sizes, textReplacements and non-Japanese languages as in
@@ -200,7 +200,7 @@ metadata-after-limit path and the sort-frequency path.
 | 8  | Main dictionary claims: removal clears it (Yomitan does not); migration picked by priority | Wording fixed; migration picks by import order |
 | 9  | v2 stats claim too narrow                                         | Moot: version 4 requires re-importing                              |
 | 10 | `serve --read-only` migrates a v2 store                           | Moot: no migration in version 4                                    |
-| 11 | Oracle's `jisho` collator option stale                            | Removed                                                            |
+| 11 | Oracle's `rikaichad` collator option stale                            | Removed                                                            |
 
 ## Storage and response format (after the review)
 
@@ -220,12 +220,12 @@ user:
 4. zstd compression (user approved the dependency): each glossary row's
    glossary and text JSON in one payload, compressed at level 9 with a
    ~110 KB dictionary trained per imported dictionary on its first 4 MB of
-   glossaries (crates/jisho-store/src/glossary_codec.rs). Prototype on
+   glossaries (crates/rikaichad-store/src/glossary_codec.rs). Prototype on
    30,001 of the user's glossaries: zlib (already a dependency) 3.05x at
    128 MB/s decompression, zstd without dictionary 2.77x at 493 MB/s, zstd
    with a trained dictionary 4.0-4.5x at 750-850 MB/s.
 
-The oracle export (crates/jisho-store/tests/export_oracle.rs) now reads
+The oracle export (crates/rikaichad-store/tests/export_oracle.rs) now reads
 glossaries through the store, replacing scripts/port/export-store.py.
 Public corpus after the change: 5,538/5,538 queries identical to Yomitan;
 store 225 MB -> 116 MB with the text added; import 7 s -> 13 s.

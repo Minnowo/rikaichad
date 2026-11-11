@@ -5,7 +5,7 @@
 //
 // Renders a glossary's structured content as DOM with Yomitan's element
 // and class names (gloss-sc-*, data-sc-*), so dictionaries' styles.css
-// applies as in Yomitan. Differences: jisho stores no media, so images
+// applies as in Yomitan. Differences: rikaichad stores no media, so images
 // become their "[Image]" link text (a span, not Yomitan's link with image
 // data attributes) with the title as tooltip; internal links
 // ("?query=...") search this UI; external links get an href only if

@@ -1,6 +1,6 @@
 [package]
-name = "jisho-fuzz"
-description = "cargo-fuzz targets for jisho (docs/plan/milestone-5.md); needs nightly: cargo +nightly fuzz run <target>"
+name = "rikaichad-fuzz"
+description = "cargo-fuzz targets for rikaichad (docs/plan/milestone-5.md); needs nightly: cargo +nightly fuzz run <target>"
 license = "AGPL-3.0-or-later"
 version = "0.0.0"
 edition = "2024"
@@ -15,11 +15,11 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 serde_json = "1"
-jisho-format = { path = "../crates/jisho-format" }
-jisho-ja = { path = "../crates/jisho-ja" }
-jisho-store = { path = "../crates/jisho-store" }
-jisho-lookup = { path = "../crates/jisho-lookup" }
-jisho-testkit = { path = "../crates/jisho-testkit" }
+rikaichad-format = { path = "../crates/rikaichad-format" }
+rikaichad-ja = { path = "../crates/rikaichad-ja" }
+rikaichad-store = { path = "../crates/rikaichad-store" }
+rikaichad-lookup = { path = "../crates/rikaichad-lookup" }
+rikaichad-testkit = { path = "../crates/rikaichad-testkit" }
 
 [profile.release]
 debug = 1

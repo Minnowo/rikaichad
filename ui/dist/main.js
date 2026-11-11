@@ -77,7 +77,7 @@ async function showSource() {
     const footer = requireElement('footer');
     try {
         const source = await getSource();
-        const text = `jisho ${source.version}, AGPL-3.0-or-later`;
+        const text = `rikaichad ${source.version}, AGPL-3.0-or-later`;
         if (source.repository === null) {
             footer.replaceChildren(el('small', '', text));
             return;

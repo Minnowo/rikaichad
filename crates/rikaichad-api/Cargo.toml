@@ -1,0 +1,25 @@
+[package]
+name = "rikaichad-api"
+description = "HTTP/JSON API server for rikaichad lookups and dictionary management."
+license = "AGPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+rikaichad-format = { path = "../rikaichad-format" }
+rikaichad-lookup = { path = "../rikaichad-lookup" }
+rikaichad-store = { path = "../rikaichad-store" }
+serde = { version = "1", features = ["derive"] }
+# raw_value: glossaries are copied into responses without parsing.
+serde_json = { version = "1", features = ["raw_value"] }
+tokio = { version = "1", default-features = false, features = ["net", "rt-multi-thread", "time", "signal", "sync"] }
+
+[dev-dependencies]
+rikaichad-testkit = { path = "../rikaichad-testkit" }
+serde_json = "1"
+
+[lints]
+workspace = true

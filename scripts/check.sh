@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 # ui/dist is build output (the CSS minifier turns escapes into characters);
 # its ASCII sources are checked, and the web UI step checks dist matches.
 # Images are binary, not text.
-ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|crates/jisho-(ja|lookup)/data/.*[.]json$|bench/sentences.txt$|LICENSE$|ui/dist/)|[.](png|jpe?g|gif|webp|ico)$'
+ASCII_EXCEPTIONS='^(docs/reference/|tests/fixtures/|crates/rikaichad-(ja|lookup)/data/.*[.]json$|bench/sentences.txt$|LICENSE$|ui/dist/)|[.](png|jpe?g|gif|webp|ico)$'
 
 # Licenses allowed for dependencies (SPDX ids). See scripts/license_check.py
 # for how OR/AND/WITH expressions are evaluated.
@@ -65,8 +65,8 @@ echo "tests passed: $passed"
 # The store portability pair is ignored by default (CI runs it across
 # operating systems); run it here on one machine so it cannot go stale.
 portable_dir=$(mktemp -d)
-JISHO_PORTABLE_STORE="$portable_dir/portable.sqlite" cargo test -q -p jisho --test portable_store --locked -- --ignored --exact write_portable_store
-JISHO_PORTABLE_STORE="$portable_dir/portable.sqlite" cargo test -q -p jisho --test portable_store --locked -- --ignored --exact read_portable_store
+RIKAICHAD_PORTABLE_STORE="$portable_dir/portable.sqlite" cargo test -q -p rikaichad --test portable_store --locked -- --ignored --exact write_portable_store
+RIKAICHAD_PORTABLE_STORE="$portable_dir/portable.sqlite" cargo test -q -p rikaichad --test portable_store --locked -- --ignored --exact read_portable_store
 rm -rf "$portable_dir"
 
 step "ascii"

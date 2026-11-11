@@ -1,9 +1,9 @@
-# jisho HTTP API
+# rikaichad HTTP API
 
-Status: draft. Shapes may change until jisho 1.0; after that, breaking
+Status: draft. Shapes may change until rikaichad 1.0; after that, breaking
 changes need a new version prefix (`/v2`).
 
-`jisho serve` exposes this API. Default address `127.0.0.1:47613`;
+`rchad serve` exposes this API. Default address `127.0.0.1:47613`;
 `--bind <addr:port>` changes it. There is no authentication.
 
 ## Conventions
@@ -127,8 +127,8 @@ Entries come in Yomitan's order (longest match first, then fewer
 transformations, exact matches, the sort-frequency dictionary's order if
 one is set, dictionary order, score, headword text, ...). The final
 tie-break compares headwords like Yomitan's `Intl.Collator('en-US')`
-(exact for the characters jisho's table covers; see
-crates/jisho-lookup/src/collation.rs).
+(exact for the characters rikaichad's table covers; see
+crates/rikaichad-lookup/src/collation.rs).
 
 Response:
 
@@ -327,8 +327,8 @@ dictionary, grouped by the tag's category in the dictionary's order.
 
 Dictionaries are listed in lookup order. The per-dictionary settings and
 `lookup_settings` are Yomitan's dictionary settings and its `general`
-main/sort-frequency dictionary options; the CLI changes them (`jisho
-dictionary`, `jisho order`, `jisho settings`), the API from milestone 4.
+main/sort-frequency dictionary options; the CLI changes them (`rchad
+dictionary`, `rchad order`, `rchad settings`), the API from milestone 4.
 `main_dictionary` is set at import to the first dictionary with sequence
 numbers, as Yomitan's settings page does; removing that dictionary clears
 it (Yomitan keeps the stale name), so the next sequenced import takes its
@@ -468,15 +468,15 @@ settings.
 Where to get the source of this server (AGPL-3.0 section 13):
 
 ```json
-{"name": "jisho", "version": "0.1.0", "license": "AGPL-3.0-or-later AND GPL-3.0-or-later",
+{"name": "rikaichad", "version": "0.1.0", "license": "AGPL-3.0-or-later AND GPL-3.0-or-later",
  "repository": "https://...", "commit": "80747dc...", "dirty": "false"}
 ```
 
 `commit` is the git commit the binary was built from (`"unknown"`
-outside a checkout unless `JISHO_GIT_COMMIT` is set at build time);
+outside a checkout unless `RIKAICHAD_GIT_COMMIT` is set at build time);
 `dirty` says whether the build had uncommitted changes. `repository` is
-`--source-url`, or `JISHO_SOURCE_URL` at build time, or null. Anyone who
-runs a modified jisho for others must publish their source and set it.
+`--source-url`, or `RIKAICHAD_SOURCE_URL` at build time, or null. Anyone who
+runs a modified rikaichad for others must publish their source and set it.
 
 ### GET /, GET /ui/{file}
 

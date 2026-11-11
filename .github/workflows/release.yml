@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Builds jisho for Linux, macOS and Windows and publishes a GitHub release
+# Builds rikaichad for Linux, macOS and Windows and publishes a GitHub release
 # when a version tag (v0.1.0, ...) is pushed. The tag must match the
 # workspace version in Cargo.toml. Each archive holds the binary, LICENSE,
 # NOTICE, README.md and THIRD-PARTY-LICENSES.txt (docs/install.md,
@@ -70,15 +70,15 @@ jobs:
         shell: bash
         env:
           # Shown by GET /v1/source (AGPL-3.0 section 13).
-          JISHO_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
-        run: cargo build --release --locked -p jisho --target ${{ matrix.target }}
+          RIKAICHAD_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: cargo build --release --locked -p rikaichad --target ${{ matrix.target }}
       - name: Package
         id: package
         shell: bash
         run: |
-          name="jisho-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          name="rikaichad-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          if [ "$RUNNER_OS" = "Windows" ]; then exe=jisho.exe; py=python; else exe=jisho; py=python3; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then exe=rchad.exe; py=python; else exe=rchad; py=python3; fi
           cp "target/${{ matrix.target }}/release/$exe" LICENSE NOTICE README.md "dist/$name/"
           "$py" -I scripts/third-party-licenses.py > "dist/$name/THIRD-PARTY-LICENSES.txt"
           cd dist
@@ -93,7 +93,7 @@ jobs:
         if: matrix.test
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then exe=jisho.exe; else exe=jisho; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then exe=rchad.exe; else exe=rchad; fi
           "target/${{ matrix.target }}/release/$exe" --version
       - uses: actions/upload-artifact@v4
         with:
@@ -125,7 +125,7 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" artifacts/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "jisho ${GITHUB_REF_NAME#v}" \
+            --title "rikaichad ${GITHUB_REF_NAME#v}" \
             --generate-notes \
             --verify-tag \
             $prerelease

@@ -131,63 +131,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
-name = "jisho-format"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "serde",
- "serde_json",
- "zip",
-]
-
-[[package]]
-name = "jisho-fuzz"
-version = "0.0.0"
-dependencies = [
- "jisho-format",
- "jisho-ja",
- "jisho-lookup",
- "jisho-store",
- "jisho-testkit",
- "libfuzzer-sys",
- "serde_json",
-]
-
-[[package]]
-name = "jisho-ja"
-version = "0.1.0"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
-name = "jisho-lookup"
-version = "0.1.0"
-dependencies = [
- "jisho-ja",
- "jisho-store",
- "serde_json",
-]
-
-[[package]]
-name = "jisho-store"
-version = "0.1.0"
-dependencies = [
- "jisho-format",
- "rusqlite",
- "serde_json",
- "zstd",
-]
-
-[[package]]
-name = "jisho-testkit"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "serde_json",
-]
-
-[[package]]
 name = "jobserver"
 version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -281,6 +224,63 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "rikaichad-format"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
+name = "rikaichad-fuzz"
+version = "0.0.0"
+dependencies = [
+ "libfuzzer-sys",
+ "rikaichad-format",
+ "rikaichad-ja",
+ "rikaichad-lookup",
+ "rikaichad-store",
+ "rikaichad-testkit",
+ "serde_json",
+]
+
+[[package]]
+name = "rikaichad-ja"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "rikaichad-lookup"
+version = "0.1.0"
+dependencies = [
+ "rikaichad-ja",
+ "rikaichad-store",
+ "serde_json",
+]
+
+[[package]]
+name = "rikaichad-store"
+version = "0.1.0"
+dependencies = [
+ "rikaichad-format",
+ "rusqlite",
+ "serde_json",
+ "zstd",
+]
+
+[[package]]
+name = "rikaichad-testkit"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde_json",
+]
 
 [[package]]
 name = "rusqlite"

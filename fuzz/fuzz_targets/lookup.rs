@@ -6,14 +6,14 @@
 
 use std::sync::OnceLock;
 
-use jisho_format::Limits;
-use jisho_lookup::{
+use libfuzzer_sys::fuzz_target;
+use rikaichad_format::Limits;
+use rikaichad_lookup::{
     EnabledDictionaries, FindTermsOptions, ResultMode, find_kanji, find_terms, load_raw_glossaries,
     parse_text,
 };
-use jisho_store::Store;
-use jisho_testkit::{TempDir, fixture};
-use libfuzzer_sys::fuzz_target;
+use rikaichad_store::Store;
+use rikaichad_testkit::{TempDir, fixture};
 
 struct State {
     _dir: TempDir,
@@ -88,8 +88,8 @@ fuzz_target!(|data: &[u8]| {
                     parts.next().unwrap_or_default(),
                     parts.next().unwrap_or_default(),
                 );
-                let _ = jisho_ja::distribute_furigana(a, b);
-                let _ = jisho_ja::distribute_furigana_inflected(a, b, c);
+                let _ = rikaichad_ja::distribute_furigana(a, b);
+                let _ = rikaichad_ja::distribute_furigana_inflected(a, b, c);
             }
         }
     });

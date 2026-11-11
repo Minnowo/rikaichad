@@ -27,7 +27,7 @@ export function savePageState(page, state) {
     write(() => sessionStorage.setItem(pageKey(page), JSON.stringify(state)));
 }
 function pageKey(page) {
-    return `jisho.page.${page}`;
+    return `rikaichad.page.${page}`;
 }
 /** Runs a storage read; null when storage throws. */
 export function read(get) {

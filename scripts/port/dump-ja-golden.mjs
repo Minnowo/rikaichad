@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Differential-test oracle: runs Yomitan's Japanese text functions (and
 // kanji-processor's convertVariants) over a large input set and writes
-// [input, output] pairs, which crates/jisho-ja/tests/yomitan_text_functions.rs
+// [input, output] pairs, which crates/rikaichad-ja/tests/yomitan_text_functions.rs
 // must reproduce exactly.
 //
 // Inputs: string literals from test/japanese-util.test.js, every character

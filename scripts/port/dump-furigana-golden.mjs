@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Differential-test oracle for crates/jisho-ja/src/furigana.rs: runs
+// Differential-test oracle for crates/rikaichad-ja/src/furigana.rs: runs
 // Yomitan's distributeFurigana and distributeFuriganaInflected over
 // generated (term, reading, source) triples and writes the results.
 //

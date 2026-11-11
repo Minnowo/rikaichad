@@ -41,7 +41,7 @@ export function savePageState(page: PageName, state: PageState): void {
 }
 
 function pageKey(page: PageName): string {
-    return `jisho.page.${page}`;
+    return `rikaichad.page.${page}`;
 }
 
 /** Runs a storage read; null when storage throws. */

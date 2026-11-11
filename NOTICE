@@ -1,5 +1,5 @@
-jisho
-Copyright (C) 2026 jisho contributors
+rikaichad
+Copyright (C) 2026 rikaichad contributors
 Licensed under the GNU Affero General Public License v3.0 or later
 (see LICENSE).
 
@@ -12,11 +12,11 @@ under GPL-3.0-or-later and are combined with this AGPL-3.0-or-later work.
 Ported files and data (path in this repository, upstream path); upstream
 commit ee81f8dcf13e985bb4d7961009fb49a764b4d924 unless stated:
 
-  crates/jisho-ja/data/japanese-transforms.json
+  crates/rikaichad-ja/data/japanese-transforms.json
       ext/js/language/ja/japanese-transforms.js
-  crates/jisho-ja/data/romaji-to-hiragana.json
+  crates/rikaichad-ja/data/romaji-to-hiragana.json
       ext/js/language/ja/japanese-kana-romaji-dicts.js
-  crates/jisho-ja/data/nfkd.json, halfwidth-katakana.json, prolonged-sound.json
+  crates/rikaichad-ja/data/nfkd.json, halfwidth-katakana.json, prolonged-sound.json
       ext/js/language/CJK-util.js (ranges)
   tests/fixtures/yomitan/
       test/language/japanese-transforms.test.js, test/data/translator-test-*.json,
@@ -28,7 +28,7 @@ the upstream copyright lines and the GPL-3.0-or-later SPDX identifier.
 kanji-processor
 ---------------
 
-crates/jisho-ja/data/kanji-variants.json is derived from the npm package
+crates/rikaichad-ja/data/kanji-variants.json is derived from the npm package
 kanji-processor 1.0.2 (https://www.npmjs.com/package/kanji-processor),
 used by Yomitan, under the MIT License:
     MIT License
@@ -56,7 +56,7 @@ used by Yomitan, under the MIT License:
 Unicode CLDR collation
 ----------------------
 
-crates/jisho-lookup/data/collation.json is measured from the root
+crates/rikaichad-lookup/data/collation.json is measured from the root
 collation of the Unicode Common Locale Data Repository (CLDR 48.0) as
 implemented by ICU 78.3 in Node.js (scripts/port/dump-collation.mjs), and
 tests/fixtures/collator-golden.json likewise. Unicode data is licensed
@@ -155,27 +155,27 @@ and their compiled copies in ui/dist.
 Ported Rust source files
 ------------------------
 
-  crates/jisho-ja/build.rs                   ext/js/language/language-transformer.js
-  crates/jisho-ja/src/transformer.rs         ext/js/language/language-transformer.js,
+  crates/rikaichad-ja/build.rs                   ext/js/language/language-transformer.js
+  crates/rikaichad-ja/src/transformer.rs         ext/js/language/language-transformer.js,
                                              ext/js/language/language-transforms.js
-  crates/jisho-ja/src/kana.rs                ext/js/language/ja/japanese.js
-  crates/jisho-ja/src/cjk.rs                 ext/js/language/CJK-util.js, ja/japanese.js
-  crates/jisho-ja/src/cjk_languages.rs       ext/js/language/zh/chinese.js, ko/korean.js
-  crates/jisho-ja/src/romaji.rs              ext/js/language/ja/japanese-wanakana.js
-  crates/jisho-ja/src/furigana.rs            ext/js/language/ja/japanese.js
-  crates/jisho-ja/src/text_preprocessors.rs  ext/js/language/ja/japanese-text-preprocessors.js,
+  crates/rikaichad-ja/src/kana.rs                ext/js/language/ja/japanese.js
+  crates/rikaichad-ja/src/cjk.rs                 ext/js/language/CJK-util.js, ja/japanese.js
+  crates/rikaichad-ja/src/cjk_languages.rs       ext/js/language/zh/chinese.js, ko/korean.js
+  crates/rikaichad-ja/src/romaji.rs              ext/js/language/ja/japanese-wanakana.js
+  crates/rikaichad-ja/src/furigana.rs            ext/js/language/ja/japanese.js
+  crates/rikaichad-ja/src/text_preprocessors.rs  ext/js/language/ja/japanese-text-preprocessors.js,
                                              CJK-util.js, language-descriptors.js
-  crates/jisho-lookup/src/entry.rs           ext/js/language/translator.js
-  crates/jisho-lookup/src/text_variants.rs   ext/js/language/translator.js
-  crates/jisho-lookup/src/deinflection.rs    ext/js/language/translator.js
-  crates/jisho-lookup/src/find_terms.rs      ext/js/language/translator.js
-  crates/jisho-lookup/src/sort.rs            ext/js/language/translator.js
-  crates/jisho-lookup/src/tags.rs            ext/js/language/translator.js
-  crates/jisho-lookup/src/grouping.rs        ext/js/language/translator.js
-  crates/jisho-lookup/src/meta.rs            ext/js/language/translator.js
-  crates/jisho-lookup/src/kanji.rs           ext/js/language/translator.js
-  crates/jisho-lookup/src/options.rs         ext/js/background/backend.js
-  crates/jisho-lookup/src/parse.rs           ext/js/background/backend.js
-  crates/jisho-ja/tests/yomitan_transforms.rs
+  crates/rikaichad-lookup/src/entry.rs           ext/js/language/translator.js
+  crates/rikaichad-lookup/src/text_variants.rs   ext/js/language/translator.js
+  crates/rikaichad-lookup/src/deinflection.rs    ext/js/language/translator.js
+  crates/rikaichad-lookup/src/find_terms.rs      ext/js/language/translator.js
+  crates/rikaichad-lookup/src/sort.rs            ext/js/language/translator.js
+  crates/rikaichad-lookup/src/tags.rs            ext/js/language/translator.js
+  crates/rikaichad-lookup/src/grouping.rs        ext/js/language/translator.js
+  crates/rikaichad-lookup/src/meta.rs            ext/js/language/translator.js
+  crates/rikaichad-lookup/src/kanji.rs           ext/js/language/translator.js
+  crates/rikaichad-lookup/src/options.rs         ext/js/background/backend.js
+  crates/rikaichad-lookup/src/parse.rs           ext/js/background/backend.js
+  crates/rikaichad-ja/tests/yomitan_transforms.rs
                                              test/fixtures/language-transformer-test.js,
                                              test/language/japanese-transforms.test.js

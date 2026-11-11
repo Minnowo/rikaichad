@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Types and fetch helpers for the jisho HTTP API (docs/api.md). The UI is
+// Types and fetch helpers for the rikaichad HTTP API (docs/api.md). The UI is
 // served by the same server, so requests go to its own origin.
 /** An error response from the API, or a network failure (status 0). */
 export class ApiError extends Error {
@@ -51,7 +51,7 @@ async function fetchOrThrow(path, init) {
         if (error instanceof DOMException && error.name === 'AbortError') {
             throw error;
         }
-        throw new ApiError(0, 'cannot reach the jisho server');
+        throw new ApiError(0, 'cannot reach the rikaichad server');
     }
     if (!response.ok) {
         let message = `${response.status} ${response.statusText}`;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Oracle for crates/jisho-lookup/src/collation.rs: sorts seeded random
+// Oracle for crates/rikaichad-lookup/src/collation.rs: sorts seeded random
 // strings (ASCII, kana of both scripts and widths, prolonged sound marks,
 // iteration marks, ideographs, full-width forms) with
 // Intl.Collator('en-US'), the comparer Yomitan's translator uses for its

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Dumps Yomitan's Japanese deinflection table as JSON, with every rule
-// expanded to plain data, for crates/jisho-ja/data/japanese-transforms.json.
+// expanded to plain data, for crates/rikaichad-ja/data/japanese-transforms.json.
 //
 // Usage: node scripts/port/dump-japanese-transforms.mjs <yomitan checkout> > out.json
 //

@@ -3,11 +3,11 @@
 //! parsers; term glossaries are normalized and rendered as at import.
 #![no_main]
 
-use jisho_format::{
+use libfuzzer_sys::fuzz_target;
+use rikaichad_format::{
     FormatError, Index, KanjiMetaRow, KanjiRow, TagRow, TermMetaRow, TermRow, glossary_item_text,
     normalize_glossary, stream_rows,
 };
-use libfuzzer_sys::fuzz_target;
 
 const MAX_ROW: u64 = 1 << 20;
 

@@ -3,8 +3,8 @@
 //! after import normalization (which also canonicalizes numbers).
 #![no_main]
 
-use jisho_format::{glossary_item_text, normalize_glossary};
 use libfuzzer_sys::fuzz_target;
+use rikaichad_format::{glossary_item_text, normalize_glossary};
 use serde_json::Value;
 
 fuzz_target!(|data: &[u8]| {

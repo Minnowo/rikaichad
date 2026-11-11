@@ -220,7 +220,7 @@ user agents.
 
 ### Overview
 
-jisho is a Japanese dictionary engine in Rust that reads Yomitan-format
+rikaichad is a Japanese dictionary engine in Rust that reads Yomitan-format
 dictionary zips and reproduces Yomitan's lookup behaviour (deinflection,
 scanning, ranking), exposed as a CLI and an HTTP/JSON API. Text only: no
 images or audio. The full plan, decisions and milestones are in
@@ -230,14 +230,14 @@ images or audio. The full plan, decisions and milestones are in
 
 ```
 crates/
-  jisho-format/   Yomitan zip + JSON parsing/validation, hostile-input caps
-  jisho-ja/       Ported Yomitan Japanese transforms and text preprocessors
-  jisho-store/    SQLite store (single file), streaming import, queries
-  jisho-lookup/   Ported Yomitan translator: scan, deinflect, rank, group
-  jisho-api/      HTTP server (axum), one handler per file
-  jisho/          Binary: one CLI command per file
+  rikaichad-format/   Yomitan zip + JSON parsing/validation, hostile-input caps
+  rikaichad-ja/       Ported Yomitan Japanese transforms and text preprocessors
+  rikaichad-store/    SQLite store (single file), streaming import, queries
+  rikaichad-lookup/   Ported Yomitan translator: scan, deinflect, rank, group
+  rikaichad-api/      HTTP server (axum), one handler per file
+  rikaichad/          Binary: one CLI command per file
 ui/src/                   web UI sources (TypeScript, Tailwind + ponkotsu-css)
-ui/dist/                  built UI, committed, embedded by jisho-api's build.rs;
+ui/dist/                  built UI, committed, embedded by rikaichad-api's build.rs;
                           rebuild with `npm run build` in ui/ (check.sh checks)
 docs/brief.md             plan and decisions (source of truth)
 docs/dictionary-survey.md measured facts about real dictionaries
@@ -248,9 +248,9 @@ dictionaries/             git-ignored private user dictionaries; never commit,
 scripts/check.sh          all checks; must pass before every commit
 ```
 
-Layering (enforced by crate dependencies): jisho-format and jisho-ja have
-no internal deps; jisho-store -> jisho-format; jisho-lookup -> jisho-ja,
-jisho-store; jisho-api -> jisho-lookup; jisho -> everything.
+Layering (enforced by crate dependencies): rikaichad-format and rikaichad-ja have
+no internal deps; rikaichad-store -> rikaichad-format; rikaichad-lookup -> rikaichad-ja,
+rikaichad-store; rikaichad-api -> rikaichad-lookup; rikaichad -> everything.
 
 ### Commands
 
@@ -259,7 +259,7 @@ check:   scripts/check.sh
 build:   cargo build --workspace
 test:    cargo test --workspace
 lint:    cargo clippy --workspace --all-targets -- -D warnings
-run:     cargo run -p jisho -- <command>
+run:     cargo run -p rikaichad -- <command>
 ```
 
 Run `scripts/check.sh` on its own and act on its exit status. Never pipe
@@ -273,7 +273,7 @@ commit once).
   `std::error::Error`; no `anyhow`/`thiserror` (no new deps without asking).
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!` and slice
   indexing are denied by clippy outside tests (workspace lints).
-- Logging: a small stderr logger module in the `jisho` binary (added with
+- Logging: a small stderr logger module in the `rikaichad` binary (added with
   the first log call; no logging crate); library
   crates return errors instead of logging.
 - Porting from Yomitan: read the pinned source in `reference-src/yomitan`

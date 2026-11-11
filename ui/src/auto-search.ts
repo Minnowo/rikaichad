@@ -5,9 +5,9 @@
 
 import {read, write} from './storage.js';
 
-const AUTO_SEARCH_KEY = 'jisho.autoSearch';
+const AUTO_SEARCH_KEY = 'rikaichad.autoSearch';
 /** Fired on window when the auto-search setting changes. */
-export const AUTO_SEARCH_EVENT = 'jisho:auto-search';
+export const AUTO_SEARCH_EVENT = 'rikaichad:auto-search';
 
 /** The setting as last read or set; kept here so a failed write still
  * takes effect for this page load. */

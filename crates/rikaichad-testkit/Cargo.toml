@@ -1,0 +1,15 @@
+[package]
+name = "rikaichad-testkit"
+description = "Test helpers: a minimal zip writer with control over headers, and fixture dictionaries."
+license = "AGPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+serde_json = "1"
+
+[lints]
+workspace = true

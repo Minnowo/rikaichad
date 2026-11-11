@@ -30,23 +30,23 @@ at the pinned commit:
 ## Steps
 
 1.  [x] `docs/api.md`: `/v1` endpoints, error envelope, caps, lengths.
-2.  [x] jisho-format: zip entry access via raw bytes + flate2 inflate,
+2.  [x] rikaichad-format: zip entry access via raw bytes + flate2 inflate,
         CRC check -> warning, caps (entry count, declared sizes, actual
         inflated size <= declared), root-level name matching.
-3.  [x] jisho-format: index.json parsing/validation.
-4.  [x] jisho-format: streaming bank parsing (term, term meta, kanji,
+3.  [x] rikaichad-format: index.json parsing/validation.
+4.  [x] rikaichad-format: streaming bank parsing (term, term meta, kanji,
         kanji meta, tag) with arity/type checks and error locations
         (file, row, field).
 5.  [x] Fixtures: small hand-written dictionaries built into zips by the
         tests; hostile fixtures (bomb, traversal names, bad arity, deep
         nesting, bad CRC, encrypted, unsupported method).
-6.  [x] jisho-store: schema v1, single file, WAL, streaming
+6.  [x] rikaichad-store: schema v1, single file, WAL, streaming
         import in one transaction, duplicate title rejection, list,
         remove, exact term lookup (expression or reading).
 7.  [x] Plain-text glossary rendering (strings, structured content,
         image alt) for CLI output.
 8.  [x] CLI: `import`, `list`, `remove`, `lookup`, with `--json`.
-9.  [x] jisho-api + `serve`: `POST /v1/terms/lookup`, `--bind`,
+9.  [x] rikaichad-api + `serve`: `POST /v1/terms/lookup`, `--bind`,
         `--read-only`, Host/Origin checks, caps.
 10. [x] `bench`: import time, peak RSS, store size, probe latency.
 11. [x] Run on the public corpus and the user's collection; record
@@ -62,7 +62,7 @@ at the pinned commit:
 - `index.json` `tagMeta` tags are added once when the dictionary has at
   least one tag bank (Yomitan adds them once per tag bank file; the
   duplicates have no effect on results).
-- `glossary_text` uses jisho's own plain-text rules (docs/api.md), since
+- `glossary_text` uses rikaichad's own plain-text rules (docs/api.md), since
   Yomitan's text comes from browser `innerText`.
 - Glossaries are stored in `term_glossaries`, not in `terms`: measured
   12x faster scans (brief section 5, milestone 1 measurements).

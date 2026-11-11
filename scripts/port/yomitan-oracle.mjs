@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Differential oracle: runs Yomitan's own Translator (findTerms in each
-// result mode, findKanji) over a jisho store's rows and prints the results
-// in the compact form that crates/jisho-lookup/tests/corpus_parity.rs
-// prints for jisho, one JSON line per (mode, text).
+// result mode, findKanji) over a rikaichad store's rows and prints the results
+// in the compact form that crates/rikaichad-lookup/tests/corpus_parity.rs
+// prints for rikaichad, one JSON line per (mode, text).
 //
 // The database is a fake with the result order of Yomitan's IndexedDB
 // queries (dictionary-database.js _findMultiBulk/_findFirstBulk): requests
@@ -14,8 +14,8 @@
 //
 // Usage:
 //   scripts/port/prepare-yomitan-node.sh <ynode>
-//   JISHO_EXPORT_STORE=<store> JISHO_EXPORT_OUT=rows.jsonl \
-//       cargo test --release -p jisho-store --test export_oracle -- --ignored
+//   RIKAICHAD_EXPORT_STORE=<store> RIKAICHAD_EXPORT_OUT=rows.jsonl \
+//       cargo test --release -p rikaichad-store --test export_oracle -- --ignored
 //   node --max-old-space-size=8192 scripts/port/yomitan-oracle.mjs <ynode> rows.jsonl texts.txt \
 //       <modes, e.g. split,group,merge,kanji> > yomitan.jsonl
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Collation table for crates/jisho-lookup/src/collation.rs: the order of
+// Collation table for crates/rikaichad-lookup/src/collation.rs: the order of
 // Intl.Collator('en-US') (ICU's CLDR root collation), which Yomitan's
 // translator uses for its final tie-breaks, measured per character.
 //
@@ -15,7 +15,7 @@
 // detected when its predecessor followed by the largest character sorts
 // after it (its first weight equals the predecessor's).
 //
-// Usage: node scripts/port/dump-collation.mjs > crates/jisho-lookup/data/collation.json
+// Usage: node scripts/port/dump-collation.mjs > crates/rikaichad-lookup/data/collation.json
 
 const full = new Intl.Collator('en-US');
 const base = new Intl.Collator('en-US', {sensitivity: 'base'});

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Dumps the data tables jisho-ja ports from Yomitan and kanji-processor:
+// Dumps the data tables rikaichad-ja ports from Yomitan and kanji-processor:
 //   romaji-to-hiragana.json  ROMAJI_TO_HIRAGANA entries in Object.entries order
 //   nfkd.json                String.normalize('NFKD') of every code point in
 //                            the CJK radical and CJK compatibility ranges that

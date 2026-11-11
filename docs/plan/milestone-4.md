@@ -2,7 +2,7 @@
 
 Server hardening and management API (docs/brief.md section 6): import by
 upload, remove, reorder and settings over HTTP; `/v1/source`; Yomitan's
-scanning sentence parser as `POST /v1/text/parse` and `jisho parse`.
+scanning sentence parser as `POST /v1/text/parse` and `rchad parse`.
 Already in place from milestone 1: `--read-only`, Host/Origin checks,
 body caps, request timeout, connection limits, off-loopback warning.
 
@@ -13,8 +13,8 @@ rejection, oversize bodies, concurrent import + lookup.
 
 | Rust                        | Yomitan source (ext/js/...)                                          |
 |-----------------------------|-----------------------------------------------------------------------|
-| jisho-ja furigana           | language/ja/japanese.js: distributeFurigana, distributeFuriganaInflected, segmentizeFurigana, getFuriganaKanaSegments, getStemLength |
-| jisho-lookup parse          | background/backend.js: _textParseScanning (the "scanning-parser"; MeCab is out of scope) |
+| rikaichad-ja furigana           | language/ja/japanese.js: distributeFurigana, distributeFuriganaInflected, segmentizeFurigana, getFuriganaKanaSegments, getStemLength |
+| rikaichad-lookup parse          | background/backend.js: _textParseScanning (the "scanning-parser"; MeCab is out of scope) |
 
 Behaviour kept exactly: UTF-16 positions and lengths throughout (the
 parser steps through the text by UTF-16 units and cuts `scanLength` units);
@@ -53,9 +53,9 @@ is the token.
 
 1.  [x] docs/api.md: the endpoints above.
 2.  [x] Store: cancellable import.
-3.  [x] jisho-ja furigana port + differential test against Yomitan's
+3.  [x] rikaichad-ja furigana port + differential test against Yomitan's
         functions (node oracle).
-4.  [x] jisho-lookup parse port; `jisho parse`.
+4.  [x] rikaichad-lookup parse port; `rchad parse`.
 5.  [x] API: jobs + upload, remove, patch, order, settings, source, parse;
         read-only 403s.
 6.  [x] HTTP tests: read-only 403 on every mutating endpoint, rebinding

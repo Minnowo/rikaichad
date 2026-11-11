@@ -5,11 +5,11 @@
 
 use std::io::{Cursor, Read};
 
-use jisho_format::{
+use libfuzzer_sys::fuzz_target;
+use rikaichad_format::{
     Archive, EntryKind, FormatError, Index, KanjiMetaRow, KanjiRow, Limits, TagRow, TermMetaRow,
     TermRow, normalize_glossary, stream_rows,
 };
-use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     let limits = Limits::default();
