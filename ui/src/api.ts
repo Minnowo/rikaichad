@@ -106,6 +106,22 @@ export interface ParseResponse {
     tokens: ParseToken[];
 }
 
+export interface ConjugatedForm {
+    name: string;
+    polite: boolean;
+    negative: boolean;
+    term: string;
+    reading: string;
+    furigana: FuriganaSegment[];
+}
+
+export interface FormsResponse {
+    word_class: string | null;
+    term: string;
+    reading: string;
+    forms: ConjugatedForm[];
+}
+
 export interface DictionaryInfo {
     id: number;
     title: string;
@@ -139,6 +155,11 @@ export function lookupKanji(text: string, signal: AbortSignal): Promise<KanjiRes
 
 export function parseText(text: string, signal: AbortSignal): Promise<ParseResponse> {
     return post('/v1/text/parse', {text}, signal);
+}
+
+/** The conjugation table of a headword (`word_classes` as in a lookup). */
+export function conjugate(term: string, reading: string, wordClasses: string[], signal: AbortSignal): Promise<FormsResponse> {
+    return post('/v1/terms/forms', {term, reading, word_classes: wordClasses}, signal);
 }
 
 export async function listDictionaries(): Promise<DictionaryInfo[]> {

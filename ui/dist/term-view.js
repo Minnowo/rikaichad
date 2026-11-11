@@ -3,6 +3,7 @@
 // chains, frequencies, pitch accents and definitions by dictionary, laid
 // out like Yomitan's popup. Redundant tags are hidden as in Yomitan.
 import { el } from './dom.js';
+import { formsToggle } from './forms-view.js';
 import { pitchAccent } from './pitch.js';
 import { createGlossaryItem } from './structured-content.js';
 /** A kanji character (CJK unified ideographs and extension A). */
@@ -19,10 +20,17 @@ function renderEntry(entry, nav) {
     const many = entry.headwords.length > 1;
     const node = el('article', 'surface-1 flex flex-col gap-2 entry');
     const heads = el('div', 'flex flex-wrap items-end gap-x-4 gap-y-2');
-    for (const headword of entry.headwords) {
-        heads.appendChild(renderHeadword(headword, nav));
+    const tables = el('div', 'flex flex-col gap-2');
+    for (const [index, headword] of entry.headwords.entries()) {
+        const head = renderHeadword(headword, nav);
+        const toggle = formsToggle(headword, wordClasses(entry, index), tables, nav.signal);
+        if (toggle !== null) {
+            head.appendChild(toggle);
+        }
+        heads.appendChild(head);
     }
     node.appendChild(heads);
+    node.appendChild(tables);
     for (const chain of entry.inflections) {
         if (chain.rules.length === 0) {
             continue;
@@ -52,6 +60,31 @@ function renderEntry(entry, nav) {
     }
     node.appendChild(definitions);
     return node;
+}
+/**
+ * Word classes some dictionaries give only as definition tags, by tag:
+ * JMdict marks nouns taking suru (vs) and the irregular ii/yoi (adj-ix)
+ * there, with no class in the term's rules.
+ */
+const TAG_WORD_CLASSES = { vs: 'vs', 'adj-ix': 'adj-i' };
+/**
+ * The headword's word classes, plus those its definitions' tags imply
+ * (`TAG_WORD_CLASSES`).
+ */
+function wordClasses(entry, index) {
+    const classes = [...(entry.headwords[index]?.word_classes ?? [])];
+    for (const definition of entry.definitions) {
+        if (!definition.headword_indices.includes(index)) {
+            continue;
+        }
+        for (const tag of definition.tags) {
+            const implied = TAG_WORD_CLASSES[tag.name];
+            if (implied !== undefined && !classes.includes(implied)) {
+                classes.push(implied);
+            }
+        }
+    }
+    return classes;
 }
 /**
  * One row per distinct pronunciation of a headword, listing the

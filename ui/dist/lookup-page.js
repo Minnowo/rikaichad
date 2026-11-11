@@ -82,6 +82,7 @@ export function renderLookupPage(root, params, page) {
                     window.scrollTo({ top: 0 });
                 },
                 kanjiHref: (character) => href('kanji', { q: character }),
+                signal: page,
             }));
         }
         catch (error) {

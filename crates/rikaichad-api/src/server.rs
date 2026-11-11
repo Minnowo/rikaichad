@@ -12,7 +12,7 @@ use crate::config::ServeConfig;
 use crate::guard::{HostPolicy, guard, request_timeout};
 use crate::handlers::{
     dictionaries_list, dictionaries_manage, dictionary_styles, fallback, health, jobs,
-    kanji_lookup, settings, source, terms_lookup, text_parse, ui,
+    kanji_lookup, settings, source, terms_forms, terms_lookup, text_parse, ui,
 };
 use crate::listener::GuardedListener;
 use crate::state::AppState;
@@ -59,6 +59,7 @@ fn router_with_jobs(
         .route("/v1/health", get(health::health))
         .route("/v1/terms/lookup", post(terms_lookup::terms_lookup))
         .route("/v1/kanji/lookup", post(kanji_lookup::kanji_lookup))
+        .route("/v1/terms/forms", post(terms_forms::terms_forms))
         .route("/v1/text/parse", post(text_parse::text_parse))
         .route(
             "/v1/dictionaries",

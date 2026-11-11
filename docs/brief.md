@@ -554,6 +554,12 @@ reported additionally.
    done when: server tests for the UI routes, headers, same-origin rule
    and styles endpoint pass; ui/dist matches its sources in check.sh;
    every page looked at in light and dark on the public corpus.
+7. **Conjugation tables** (added 2026-11-11, user request): a "Show forms"
+   checkbox on each headword shows every conjugated form of a verb or
+   i-adjective (`POST /v1/terms/forms`), like accentjiten's table. Plan
+   and decisions: docs/plan/milestone-7.md. - done when: every generated
+   form deinflects back with the ported transformer (listed exceptions
+   only), API tests pass, the table is looked at in the UI.
 
 ## 7. Adversarial review (2026-11-10)
 

@@ -245,6 +245,68 @@ fn lookup_request_validation() {
 }
 
 #[test]
+fn forms_of_a_looked_up_headword() {
+    let dir = TempDir::new("http-forms");
+    let addr = start(&dir, |c| c.read_only = true);
+    let lookup = post_json(
+        addr,
+        "/v1/terms/lookup",
+        r#"{"text":"食う","mode":"exact"}"#,
+    )
+    .json();
+    let headword = &lookup["entries"][0]["headwords"][0];
+    let request = serde_json::json!({
+        "term": headword["term"],
+        "reading": headword["reading"],
+        "word_classes": headword["word_classes"],
+    });
+    let res = post_json(addr, "/v1/terms/forms", &request.to_string());
+    assert_eq!(res.status, 200);
+    let body = res.json();
+    assert_eq!(body["word_class"], "v5");
+    let past = body["forms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == "past" && f["polite"] == false && f["negative"] == false)
+        .unwrap();
+    assert_eq!(past["term"], "食った");
+    assert_eq!(past["reading"], "くった");
+    assert_eq!(past["furigana"][0]["text"], "食");
+    assert_eq!(past["furigana"][0]["reading"], "く");
+}
+
+#[test]
+fn forms_of_unsupported_words_and_bad_requests() {
+    let dir = TempDir::new("http-forms-validation");
+    let addr = start(&dir, |_| {});
+    let res = post_json(
+        addr,
+        "/v1/terms/forms",
+        r#"{"term":"猫","reading":"ねこ","word_classes":["n"]}"#,
+    );
+    assert_eq!(res.status, 200);
+    let body = res.json();
+    assert_eq!(body["word_class"], serde_json::Value::Null);
+    assert_eq!(body["forms"], serde_json::json!([]));
+
+    let long = "あ".repeat(65);
+    let cases = [
+        r#"{"term":"","word_classes":["v1"]}"#.to_string(),
+        r#"{"term":"見る","word_classes":["v1"],"extra":1}"#.to_string(),
+        r#"{"term":"見る"}"#.to_string(),
+        format!(r#"{{"term":"{long}","word_classes":["v1"]}}"#),
+        r#"{"term":"見る","word_classes":["v1"]}"#.to_string(),
+        format!(r#"{{"term":"みる","word_classes":["{}"]}}"#, "v".repeat(33)),
+    ];
+    for body in cases {
+        let res = post_json(addr, "/v1/terms/forms", &body);
+        assert_eq!(res.status, 400, "{body}");
+        assert_eq!(res.json()["error"]["code"], "bad_request", "{body}");
+    }
+}
+
+#[test]
 fn text_over_1000_chars_is_rejected() {
     let dir = TempDir::new("http-text-cap");
     let addr = start(&dir, |_| {});

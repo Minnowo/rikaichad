@@ -102,6 +102,30 @@
         @apply ml-1;
     }
 
+    .forms-toggle {
+        @apply flex items-center gap-1 text-sm text-c-on-surface-variant cursor-pointer;
+    }
+    .forms-table {
+        @apply border-collapse text-left;
+    }
+    .forms-table caption {
+        @apply text-left text-sm text-c-on-surface-variant pb-1;
+    }
+    .forms-table th,
+    .forms-table td {
+        @apply border border-c-outline-variant px-2 py-1 align-top;
+    }
+    .forms-table thead th,
+    .forms-table tbody th {
+        @apply text-sm font-normal text-c-on-surface-variant whitespace-nowrap;
+    }
+    .forms-table td {
+        @apply whitespace-nowrap;
+    }
+    .forms-label-ja {
+        @apply block;
+    }
+
     .kanji-character {
         font-size: 4rem;
         line-height: 1;

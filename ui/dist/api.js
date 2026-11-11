@@ -18,6 +18,10 @@ export function lookupKanji(text, signal) {
 export function parseText(text, signal) {
     return post('/v1/text/parse', { text }, signal);
 }
+/** The conjugation table of a headword (`word_classes` as in a lookup). */
+export function conjugate(term, reading, wordClasses, signal) {
+    return post('/v1/terms/forms', { term, reading, word_classes: wordClasses }, signal);
+}
 export async function listDictionaries() {
     const body = await request('/v1/dictionaries', {});
     return body.dictionaries;

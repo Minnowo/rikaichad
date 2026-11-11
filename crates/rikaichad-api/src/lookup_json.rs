@@ -263,7 +263,7 @@ pub fn run_lookup(store: &Store, request: &LookupRequest) -> Result<LookupRespon
     })
 }
 
-fn furigana_json(term: &str, reading: &str) -> Vec<FuriganaJson> {
+pub fn furigana_json(term: &str, reading: &str) -> Vec<FuriganaJson> {
     distribute_furigana(term, reading)
         .into_iter()
         .map(|s| FuriganaJson {

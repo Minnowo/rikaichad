@@ -10,6 +10,7 @@ pub mod jobs;
 pub mod kanji_lookup;
 pub mod settings;
 pub mod source;
+pub mod terms_forms;
 pub mod terms_lookup;
 pub mod text_parse;
 pub mod ui;

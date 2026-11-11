@@ -9,6 +9,7 @@
 
 mod cjk;
 mod cjk_languages;
+mod conjugation;
 mod data;
 mod furigana;
 mod kana;
@@ -19,6 +20,7 @@ mod transformer;
 
 pub use cjk::{normalize_cjk_compatibility_characters, normalize_radicals};
 pub use cjk_languages::{is_code_point_chinese, is_code_point_korean};
+pub use conjugation::{Conjugation, FORM_NAMES, Form, MAX_CONJUGATION_INPUT, conjugate};
 pub use furigana::{FuriganaSegment, distribute_furigana, distribute_furigana_inflected};
 pub use kana::{
     collapse_emphatic_sequences, convert_alphanumeric_to_full_width,

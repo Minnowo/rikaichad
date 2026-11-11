@@ -69,6 +69,7 @@ export function renderParsePage(root: HTMLElement, params: URLSearchParams, page
                         location.hash = href('lookup', {q: query});
                     },
                     kanjiHref: (character) => href('kanji', {q: character}),
+                    signal: lookupController.signal,
                 }),
             );
         } catch (error) {

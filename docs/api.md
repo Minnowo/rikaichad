@@ -97,6 +97,7 @@ Every error response has this body:
 | GET    | `/v1/source`                   | 4                                           | no      |
 | GET    | `/v1/dictionaries/{id}/styles` | 6                                           | no      |
 | GET    | `/`, `/ui/{file}`              | 6 (web UI)                                  | no      |
+| POST   | `/v1/terms/forms`              | 7 (conjugation tables)                      | no      |
 
 With `--read-only`, every "Mutates: yes" endpoint returns `403 read_only`.
 
@@ -370,6 +371,60 @@ Request: `{"text": "...", "scan_length": 16}`. `scan_length` (default 16,
   piece is read as written.
 - `headwords` are those whose lookup matched exactly this token, grouped
   per result entry in result order; empty for unmatched text.
+
+### POST /v1/terms/forms
+
+The conjugation table of a verb or i-adjective, generated from the
+headword alone (the store is not read). Pass a headword as
+`/v1/terms/lookup` returns it.
+
+Request: `{"term": "...", "reading": "...", "word_classes": ["v5"]}`.
+`reading` may be omitted or empty only when the term is all kana.
+`term` and `reading` are at most 64 characters, `word_classes` at most
+32 entries of at most 32 characters.
+
+The first supported class in `word_classes` is used: `v1`, `v5`, `vk`,
+`vs` (suru verbs, and nouns that take suru: `term` gets suru appended)
+or `adj-i`. Other classes give `word_class: null` and no forms (status
+200).
+
+```json
+{
+  "word_class": "v5",
+  "term": "\u66f8\u304f",
+  "reading": "\u304b\u304f",
+  "forms": [
+    {"name": "past", "polite": false, "negative": false,
+     "term": "\u66f8\u3044\u305f", "reading": "\u304b\u3044\u305f",
+     "furigana": [{"text": "\u66f8", "reading": "\u304b"}, {"text": "\u3044\u305f", "reading": ""}]}
+  ]
+}
+```
+
+- `name` is one of, in table order: `non-past`, `past`, `te`,
+  `adverbial`, `conditional` (-ba), `tara`, `volitional`, `imperative`,
+  `desire` (-tai), `progressive` (-te iru), `potential`, `passive`,
+  `causative`, `causative-passive`, `noun` (-sa). Forms come in that
+  order, plain before polite and affirmative before negative. One
+  `(name, polite, negative)` cell can hold several forms (-nakute and
+  -naide), and not every word has every cell (aru has no progressive,
+  potential, passive or causative; the honorific verbs have no -tai or
+  -nasai forms; gozaru has no imperative).
+- suru's potential is the verb dekiru (`benkyou dekiru`). The kanji
+  spelling of suru is returned in kana.
+- Irregular words: iku/yuku (itte), aru (negative nai), the -u verbs
+  that take -ute (tou, kou, notamau -> notamoute; the same list Yomitan
+  deinflects), the honorific verbs irassharu, ossharu, kudasaru,
+  nasaru, gozaru (-imasu, irasshai), kureru (imperative kure), kuru,
+  suru, ii (yoku).
+- Not handled: single-kanji suru verbs that partly conjugate like godan
+  (aisuru -> aisanai, aiseru). Dictionaries tag them plain `vs`, so they
+  get the regular suru table (aishinai).
+- Lookup deinflects every form back to the dictionary form except:
+  separate words at the end (-naide, prohibitive -na, -desu), aru's
+  negatives (found under nai), ii's forms (under yoi), yuku's itte
+  forms (under iku), suru's potential (dekiru), and the honorific -i
+  imperative and the -imasu forms of honorific compounds.
 
 ### POST /v1/dictionaries
 

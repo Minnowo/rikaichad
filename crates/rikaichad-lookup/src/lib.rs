@@ -32,5 +32,8 @@ pub use kanji::find_kanji;
 pub use options::{DictionaryOptions, EnabledDictionaries, FindTermsOptions, ResultMode};
 pub use parse::{ParsedHeadword, ParsedToken, parse_text};
 /// Furigana of a headword (Yomitan's distributeFurigana), for clients.
-pub use rikaichad_ja::{FuriganaSegment, distribute_furigana};
+pub use rikaichad_ja::{
+    Conjugation, Form, FuriganaSegment, MAX_CONJUGATION_INPUT, conjugate, distribute_furigana,
+    is_string_entirely_kana,
+};
 pub use utf16::utf16_len;
